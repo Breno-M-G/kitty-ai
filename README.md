@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-\# 🐱 Kitty AI
+# 🐱 Kitty AI
 
 
 
@@ -7,7 +6,7 @@ Assistente pessoal com IA construída do zero em Python.
 
 
 
-\## Sobre o projeto
+## Sobre o projeto
 
 
 
@@ -19,50 +18,45 @@ projeto \[build-your-own-openclaw](https://github.com/czl9707/build-your-own-ope
 
 
 
-\## Funcionalidades
+## Funcionalidades
 
 
 
-\- 💬 Conversa em português
+- 💬 Conversa em português
 
-\- 📂 Leitura e escrita de arquivos
+- 📂 Leitura e escrita de arquivos
 
-\- 💻 Execução de comandos no terminal
+- 💻 Execução de comandos no terminal
 
-\- 🔌 Compatível com OpenAI, Claude e Gemini
-
-
-
-\## Como rodar
+- 🔌 Compatível com OpenAI, Claude e Gemini
 
 
 
-1\. Clone o repositório
+## Como rodar
 
-2\. Copie o arquivo de configuração:
+
+
+1. Clone o repositório
+
+2. Copie o arquivo de configuração:
 
 &#x20;  cp default\_workspace/config.example.yaml default\_workspace/config.user.yaml
 
-3\. Edite o config.user.yaml com sua API key
+3. Edite o config.user.yaml com sua API key
 
-4\. Rode o bot:
+4. Rode o bot:
 
 &#x20;  uv run my-bot chat
 
 
 
-\## Tecnologias
+## Tecnologias
 
 
 
-\- Python
+- Python
 
-\- LiteLLM
+- LiteLLM
 
-\- uv
+- uv
 
-
-=======
-# kitty-ai
-Projeto de IA assistente virtual utilizando python.
->>>>>>> a65657a81132011cae9ea1669ba698cbb7d34226
