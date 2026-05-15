@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 \# 🐱 Kitty AI
 
 
@@ -61,3 +62,7 @@ projeto \[build-your-own-openclaw](https://github.com/czl9707/build-your-own-ope
 \- uv
 
 
+=======
+# kitty-ai
+Projeto de IA assistente virtual utilizando python.
+>>>>>>> a65657a81132011cae9ea1669ba698cbb7d34226

@@ -26,18 +26,20 @@ class LLMConfig(BaseModel):
 
 
 class Config(BaseModel):
-    """Main configuration for step 00."""
+    """Main configuration for step 02."""
 
     workspace: Path
     llm: LLMConfig
     default_agent: str
     agents_path: Path = Field(default=Path("agents"))
+    skills_path: Path = Field(default=Path("skills"))
 
     @model_validator(mode="after")
     def resolve_paths(self) -> "Config":
         """Resolve relative paths to absolute using workspace."""
         for field_name in (
             "agents_path",
+            "skills_path",
         ):
             path = getattr(self, field_name)
             if not path.is_absolute():

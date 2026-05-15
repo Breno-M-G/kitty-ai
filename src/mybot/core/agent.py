@@ -13,8 +13,11 @@ from litellm.types.completion import (
 )
 
 from mybot.provider.llm import LLMProvider, LLMToolCall
-from mybot.tools.registry import ToolRegistry
 from mybot.core.session_state import SessionState
+from mybot.core.skill_loader import SkillLoader
+from mybot.tools.registry import ToolRegistry
+from mybot.tools.skill_tool import create_skill_tool
+
 
 if TYPE_CHECKING:
     from mybot.core.agent_loader import AgentDef
@@ -28,10 +31,24 @@ class Agent:
         self.agent_def = agent_def
         self.config = config
         self.llm = LLMProvider.from_config(agent_def.llm)
+        self.skill_loader = SkillLoader.from_config(config)
+
+
+    def _build_tools(self) -> ToolRegistry:
+        """Build a ToolRegistry with tools appropriate for the session."""
+        registry = ToolRegistry.with_builtins()
+
+        if self.agent_def.allow_skills:
+            skill_tool = create_skill_tool(self.skill_loader)
+            if skill_tool:
+                registry.register(skill_tool)
+
+        return registry
 
     def new_session(self, session_id: str | None = None) -> "AgentSession":
         """Create a new conversation session."""
         session_id = session_id or str(uuid.uuid4())
+        tools = self._build_tools()
 
         state = SessionState(
             session_id=session_id,
@@ -39,9 +56,8 @@ class Agent:
             messages=[],
         )
 
-        # Create tool registry with builtins
-        tools = ToolRegistry.with_builtins()
         session = AgentSession(agent=self, state=state, tools=tools)
+        
         return session
 
 

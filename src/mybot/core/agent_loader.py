@@ -20,6 +20,7 @@ class AgentDef(BaseModel):
     description: str = ""
     agent_md: str
     llm: LLMConfig
+    allow_skills: bool = False
 
 
 class AgentLoader:
@@ -63,6 +64,7 @@ class AgentLoader:
                 description=frontmatter.get("description", ""),
                 agent_md=body.strip(),
                 llm=merged_llm,
+                allow_skills=frontmatter.get("allow_skills", False),
             )
         except ValidationError as e:
             raise InvalidDefError("agent", def_id, str(e))
