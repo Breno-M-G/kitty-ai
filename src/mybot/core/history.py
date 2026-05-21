@@ -96,7 +96,7 @@ class HistoryStore:
                 if line:
                     try:
                         sessions.append(HistorySession.model_validate_json(line))
-                    except Exception:
+                    except Exception as e:
                         continue
         return sessions
 
@@ -121,15 +121,10 @@ class HistoryStore:
             created_at=now,
             updated_at=now,
         )
-        print(f"DEBUG: Salvando sessao em {self.index_path}")
         with open(self.index_path, "a", encoding='utf-8') as f:
             f.write(session.model_dump_json() + "\n")
-        print(f"DEBUG: index.jsonl criado!")
-        
         session_file = self._session_path(session_id)
-        print(f"DEBUG: Criando arquivo de sessao em {session_file}")
         session_file.touch()
-        print(f"DEBUG: Sessao criada com sucesso!")
         return session.model_dump()
 
     def save_message(self, session_id: str, message: HistoryMessage) -> None:

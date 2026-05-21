@@ -1,30 +1,31 @@
-"""Chat CLI command for interactive sessions with persistence."""
-
 import sys
-import asyncio
-import typer
-
 if sys.platform == 'win32':
     import ctypes
     ctypes.windll.kernel32.SetConsoleOutputCP(65001)
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+"""Chat CLI command for interactive sessions with slash commands."""
+
+import asyncio
+
+import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
+
 from mybot.core.agent import Agent
 from mybot.core.agent_loader import AgentLoader
 from mybot.utils.config import Config
 
 
 class ChatLoop:
-    """Interactive chat session with persistence."""
+    """Interactive chat session with slash commands."""
 
     def __init__(self, config: Config, agent_id: str | None = None):
         self.config = config
-        self.console = Console(file=sys.stdout)
+        self.console = Console()
 
         # Load agent
         loader = AgentLoader(config)
@@ -44,6 +45,7 @@ class ChatLoop:
     def display_agent_response(self, content: str) -> None:
         """Display agent response with styled prefix."""
         prefix = Text(f"{self.agent_def.id}: ", style="green")
+
         self.console.print(prefix, end="")
         self.console.print(content)
 
@@ -56,29 +58,42 @@ class ChatLoop:
                 border_style="cyan",
             )
         )
-        self.console.print("Type 'quit' or 'exit' to end the session.\n")
+        self.console.print("Type '/help' for commands, 'quit' or 'exit' to end.\n")
 
         try:
             while True:
                 user_input = await asyncio.to_thread(self.get_user_input)
+
                 if user_input.lower() in ("quit", "exit", "q"):
                     self.console.print("\n[bold yellow]Goodbye![/bold yellow]")
                     break
+
                 if not user_input:
                     continue
+
                 try:
+                    # Check for slash commands
+                    cmd_response = await self.session.command_registry.dispatch(
+                        user_input, self.session
+                    )
+                    if cmd_response is not None:
+                        self.console.print(cmd_response)
+                        continue
+
+                    # Normal chat
                     response = await self.session.chat(user_input)
                     self.display_agent_response(response)
                 except Exception as e:
-                    import traceback
                     self.console.print(f"\n[bold red]Error:[/bold red] {e}\n")
-                    self.console.print(traceback.format_exc())
+
         except (KeyboardInterrupt, EOFError):
             self.console.print("\n[bold yellow]Goodbye![/bold yellow]")
+
 
 
 def chat_command(ctx: typer.Context, agent_id: str | None = None) -> None:
     """Start interactive chat session."""
     config = ctx.obj.get("config")
+
     chat_loop = ChatLoop(config, agent_id=agent_id)
     asyncio.run(chat_loop.run())

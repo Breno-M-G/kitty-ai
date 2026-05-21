@@ -1,4 +1,4 @@
-"""Agent and AgentSession for step 03 with persistence support."""
+"""Agent and AgentSession for step 04 with slash commands support."""
 
 import asyncio
 import json
@@ -12,6 +12,7 @@ from litellm.types.completion import (
     ChatCompletionMessageToolCallParam,
 )
 
+from mybot.core.commands.registry import CommandRegistry
 from mybot.core.history import HistoryStore
 from mybot.core.session_state import SessionState
 from mybot.core.skill_loader import SkillLoader
@@ -33,6 +34,7 @@ class Agent:
         self.llm = LLMProvider.from_config(agent_def.llm)
         self.skill_loader = SkillLoader.from_config(config)
         self.history_store = HistoryStore.from_config(config)
+        self.command_registry = CommandRegistry.with_builtins()
 
     def _build_tools(self) -> ToolRegistry:
         """Build a ToolRegistry with tools appropriate for the session."""
@@ -56,13 +58,19 @@ class Agent:
                     m.to_message()
                     for m in self.history_store.get_messages(session_id)
                 ]
+                
                 state = SessionState(
                     session_id=session_id,
                     agent=self,
                     messages=messages,
                     history_store=self.history_store
                 )
-                return AgentSession(agent=self, state=state, tools=tools)
+                return AgentSession(
+                    agent=self,
+                    state=state,
+                    tools=tools,
+                    command_registry=self.command_registry,
+                )
 
         session_id = session_id or str(uuid.uuid4())
         state = SessionState(
@@ -72,7 +80,12 @@ class Agent:
             history_store=self.history_store
         )
         self.history_store.create_session(self.agent_def.id, session_id)
-        return AgentSession(agent=self, state=state, tools=tools)
+        return AgentSession(
+            agent=self,
+            state=state,
+            tools=tools,
+            command_registry=self.command_registry,
+        )
 
 
 @dataclass
@@ -82,10 +95,12 @@ class AgentSession:
     agent: Agent
     state: SessionState
     tools: ToolRegistry
+    command_registry: CommandRegistry
     started_at: datetime = field(default_factory=datetime.now)
 
     @property
     def session_id(self) -> str:
+        """Delegate to state."""
         return self.state.session_id
 
     async def chat(self, message: str) -> str:

@@ -31,22 +31,6 @@ class SessionState:
     def build_messages(self) -> list[Message]:
         """Build messages list with system prompt."""
         system_prompt = self.agent.agent_def.agent_md
-        
-        # Debug: verificar encoding do system prompt
-        try:
-            system_prompt.encode('utf-8')
-        except UnicodeEncodeError as e:
-            print(f"DEBUG system_prompt encode error: {e}")
-            system_prompt = system_prompt.encode('utf-8', errors='replace').decode('utf-8')
-
-        # Debug: verificar encoding do SOUL
-        soul = getattr(self.agent.agent_def, 'soul_md', '')
-        if soul:
-            try:
-                soul.encode('utf-8')
-            except UnicodeEncodeError as e:
-                print(f"DEBUG soul encode error: {e}")
-
         messages: list[Message] = [{"role": "system", "content": system_prompt}]
         messages.extend(self.messages)
         return messages
