@@ -36,6 +36,8 @@ def parse_definition(
 ) -> T:
     """Parse YAML frontmatter + markdown body with type conversion."""
     # Find frontmatter delimiters
+    content = content.replace('\r\n', '\n')
+    content = content.lstrip('\ufeff')
     if not content.startswith("---\n"):
         body = content
         return parse_fn(def_id, {}, body)
@@ -73,7 +75,7 @@ def discover_definitions(
             continue
 
         try:
-            content = def_file.read_text()
+            content = def_file.read_text(encoding='utf-8')
             result = parse_definition(content, def_dir.name, parse_fn)
             if result is not None:
                 results.append(result)
@@ -100,6 +102,6 @@ def write_definition(
     content = f"---\n{yaml_content}---\n\n{body.strip()}\n"
 
     def_file = def_dir / filename
-    def_file.write_text(content)
+    def_file.write_text(content, encoding='utf-8')
 
     return def_file

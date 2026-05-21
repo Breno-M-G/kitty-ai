@@ -1,4 +1,4 @@
-"""Agent and AgentSession for step 01 with tool support."""
+"""Agent and AgentSession for step 03 with persistence support."""
 
 import asyncio
 import json
@@ -12,12 +12,12 @@ from litellm.types.completion import (
     ChatCompletionMessageToolCallParam,
 )
 
-from mybot.provider.llm import LLMProvider, LLMToolCall
+from mybot.core.history import HistoryStore
 from mybot.core.session_state import SessionState
 from mybot.core.skill_loader import SkillLoader
+from mybot.provider.llm import LLMProvider, LLMToolCall
 from mybot.tools.registry import ToolRegistry
 from mybot.tools.skill_tool import create_skill_tool
-
 
 if TYPE_CHECKING:
     from mybot.core.agent_loader import AgentDef
@@ -32,33 +32,47 @@ class Agent:
         self.config = config
         self.llm = LLMProvider.from_config(agent_def.llm)
         self.skill_loader = SkillLoader.from_config(config)
-
+        self.history_store = HistoryStore.from_config(config)
 
     def _build_tools(self) -> ToolRegistry:
         """Build a ToolRegistry with tools appropriate for the session."""
         registry = ToolRegistry.with_builtins()
-
         if self.agent_def.allow_skills:
             skill_tool = create_skill_tool(self.skill_loader)
             if skill_tool:
                 registry.register(skill_tool)
-
         return registry
 
     def new_session(self, session_id: str | None = None) -> "AgentSession":
-        """Create a new conversation session."""
-        session_id = session_id or str(uuid.uuid4())
+        """Create or resume the most recent conversation session."""
         tools = self._build_tools()
 
+        if session_id is None:
+            sessions = self.history_store.list_sessions()
+            agent_sessions = [s for s in sessions if s.agent_id == self.agent_def.id]
+            if agent_sessions:
+                session_id = agent_sessions[0].id
+                messages = [
+                    m.to_message()
+                    for m in self.history_store.get_messages(session_id)
+                ]
+                state = SessionState(
+                    session_id=session_id,
+                    agent=self,
+                    messages=messages,
+                    history_store=self.history_store
+                )
+                return AgentSession(agent=self, state=state, tools=tools)
+
+        session_id = session_id or str(uuid.uuid4())
         state = SessionState(
             session_id=session_id,
             agent=self,
             messages=[],
+            history_store=self.history_store
         )
-
-        session = AgentSession(agent=self, state=state, tools=tools)
-        
-        return session
+        self.history_store.create_session(self.agent_def.id, session_id)
+        return AgentSession(agent=self, state=state, tools=tools)
 
 
 @dataclass
@@ -72,7 +86,6 @@ class AgentSession:
 
     @property
     def session_id(self) -> str:
-        """Delegate to state."""
         return self.state.session_id
 
     async def chat(self, message: str) -> str:
@@ -107,19 +120,13 @@ class AgentSession:
 
             await self._handle_tool_calls(tool_calls)
 
-            continue
-
         return content
 
-    async def _handle_tool_calls(
-        self,
-        tool_calls: list["LLMToolCall"],
-    ) -> None:
+    async def _handle_tool_calls(self, tool_calls: list[LLMToolCall]) -> None:
         """Handle tool calls from the LLM response."""
         tool_call_results = await asyncio.gather(
-            *[self._execute_tool_call(tool_call) for tool_call in tool_calls]
+            *[self._execute_tool_call(tc) for tc in tool_calls]
         )
-
         for tool_call, result in zip(tool_calls, tool_call_results):
             tool_msg: Message = {
                 "role": "tool",
@@ -128,20 +135,14 @@ class AgentSession:
             }
             self.state.add_message(tool_msg)
 
-    async def _execute_tool_call(
-        self,
-        tool_call: LLMToolCall,
-    ) -> str:
+    async def _execute_tool_call(self, tool_call: LLMToolCall) -> str:
         """Execute a single tool call."""
-        # Extract key arguments
         try:
             args = json.loads(tool_call.arguments)
         except json.JSONDecodeError:
             args = {}
-
         try:
             result = await self.tools.execute_tool(tool_call.name, session=self, **args)
         except Exception as e:
             result = f"Error executing tool: {e}"
-
         return result

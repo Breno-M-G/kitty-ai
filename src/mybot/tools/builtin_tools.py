@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 async def read_file(path: str, session: "AgentSession") -> str:
     """Read and return the contents of a file at the given path."""
     try:
-        return Path(path).read_text()
+        return Path(path).read_text(encoding='utf-8', errors='replace')
     except FileNotFoundError:
         return f"Error: File not found: {path}"
     except PermissionError:
@@ -56,7 +56,7 @@ async def read_file(path: str, session: "AgentSession") -> str:
 async def write_file(path: str, content: str, session: "AgentSession") -> str:
     """Write content to a file at the given path."""
     try:
-        Path(path).write_text(content)
+        Path(path).write_text(content, encoding='utf-8')
         return f"Successfully wrote to: {path}"
     except PermissionError:
         return f"Error: Permission denied writing to: {path}"
@@ -87,11 +87,11 @@ async def edit_file(
 ) -> str:
     """Edit a file by replacing old_text with new_text."""
     try:
-        content = Path(path).read_text()
+        content = Path(path).read_text(encoding='utf-8', errors='replace')
         if old_text not in content:
             return f"Error: '{old_text}' not found in {path}"
         new_content = content.replace(old_text, new_text)
-        Path(path).write_text(new_content)
+        Path(path).write_text(new_content, encoding='utf-8')
         return f"Successfully edited {path}"
     except FileNotFoundError:
         return f"Error: File not found: {path}"
@@ -124,8 +124,8 @@ async def bash(command: str, session: "AgentSession") -> str:
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await process.communicate()
-        output = stdout.decode() if stdout else ""
-        error = stderr.decode() if stderr else ""
+        output = stdout.decode('utf-8', errors='replace') if stdout else ""
+        error = stderr.decode('utf-8', errors='replace') if stderr else ""
         if output and error:
             return f"{output}\n{error}"
         return output or error or "Command completed with no output"

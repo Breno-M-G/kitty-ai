@@ -26,13 +26,14 @@ class LLMConfig(BaseModel):
 
 
 class Config(BaseModel):
-    """Main configuration for step 02."""
+    """Main configuration for step 03."""
 
     workspace: Path
     llm: LLMConfig
     default_agent: str
     agents_path: Path = Field(default=Path("agents"))
     skills_path: Path = Field(default=Path("skills"))
+    history_path: Path = Field(default=Path(".history"))
 
     @model_validator(mode="after")
     def resolve_paths(self) -> "Config":
@@ -40,6 +41,7 @@ class Config(BaseModel):
         for field_name in (
             "agents_path",
             "skills_path",
+            "history_path",
         ):
             path = getattr(self, field_name)
             if not path.is_absolute():
@@ -60,5 +62,5 @@ class Config(BaseModel):
         if not config_file.exists():
             raise FileNotFoundError(f"Config file not found: {config_file}")
 
-        with open(config_file) as f:
+        with open(config_file, encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
