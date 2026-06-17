@@ -1,3 +1,9 @@
+﻿import sys
+if sys.platform == 'win32':
+    import ctypes
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 """Chat CLI command for interactive sessions with slash commands."""
 
 import asyncio
@@ -89,3 +95,4 @@ def chat_command(ctx: typer.Context, agent_id: str | None = None) -> None:
 
     chat_loop = ChatLoop(config, agent_id=agent_id)
     asyncio.run(chat_loop.run())
+

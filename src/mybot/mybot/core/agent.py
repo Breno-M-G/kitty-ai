@@ -1,4 +1,4 @@
-"""Agent and AgentSession for step 05 with compaction support."""
+"""Agent and AgentSession for step 06 with web tools support."""
 
 import asyncio
 import json
@@ -20,6 +20,8 @@ from mybot.core.skill_loader import SkillLoader
 from mybot.provider.llm import LLMProvider, LLMToolCall
 from mybot.tools.registry import ToolRegistry
 from mybot.tools.skill_tool import create_skill_tool
+from mybot.tools.websearch_tool import create_websearch_tool
+from mybot.tools.webread_tool import create_webread_tool
 
 if TYPE_CHECKING:
     from mybot.core.agent_loader import AgentDef
@@ -46,6 +48,15 @@ class Agent:
             if skill_tool:
                 registry.register(skill_tool)
 
+        # Add web tools if configured
+        websearch_tool = create_websearch_tool(self.config)
+        if websearch_tool:
+            registry.register(websearch_tool)
+
+        webread_tool = create_webread_tool(self.config)
+        if webread_tool:
+            registry.register(webread_tool)
+
         return registry
 
     def _get_token_threshold(self) -> int:
@@ -54,32 +65,48 @@ class Agent:
         return 160000
 
     def new_session(self, session_id: str | None = None) -> "AgentSession":
-        """Create a new conversation session."""
-        session_id = session_id or str(uuid.uuid4())
+        """Create or resume the most recent conversation session."""
         tools = self._build_tools()
+        context_guard = ContextGuard(token_threshold=self._get_token_threshold())
 
-        # Create context guard for this session
-        context_guard = ContextGuard(
-            token_threshold=self._get_token_threshold(),
-        )
+        if session_id is None:
+            sessions = self.history_store.list_sessions()
+            agent_sessions = [s for s in sessions if s.agent_id == self.agent_def.id]
+            if agent_sessions:
+                session_id = agent_sessions[0].id
+                messages = [
+                    m.to_message()
+                    for m in self.history_store.get_messages(session_id)
+                ]
+                state = SessionState(
+                    session_id=session_id,
+                    agent=self,
+                    messages=messages,
+                    history_store=self.history_store,
+                )
+                return AgentSession(
+                    agent=self,
+                    state=state,
+                    context_guard=context_guard,
+                    tools=tools,
+                    command_registry=self.command_registry,
+                )
 
+        session_id = session_id or str(uuid.uuid4())
         state = SessionState(
             session_id=session_id,
             agent=self,
             messages=[],
             history_store=self.history_store,
         )
-
-        session = AgentSession(
+        self.history_store.create_session(self.agent_def.id, session_id)
+        return AgentSession(
             agent=self,
             state=state,
             context_guard=context_guard,
             tools=tools,
             command_registry=self.command_registry,
         )
-        self.history_store.create_session(self.agent_def.id, session_id)
-
-        return session
 
 
 @dataclass
@@ -171,3 +198,4 @@ class AgentSession:
             result = f"Error executing tool: {e}"
 
         return result
+

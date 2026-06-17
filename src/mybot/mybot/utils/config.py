@@ -1,7 +1,7 @@
-"""Configuration management."""
+﻿"""Configuration management."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Union
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -25,8 +25,28 @@ class LLMConfig(BaseModel):
         return v
 
 
+class BraveWebSearchConfig(BaseModel):
+    """Configuration for Brave web search provider."""
+
+    provider: Literal["brave"] = "brave"
+    api_key: str
+
+
+class TavilyWebSearchConfig(BaseModel):
+    """Configuration for Tavily web search provider."""
+
+    provider: Literal["tavily"] = "tavily"
+    api_key: str
+
+
+class Crawl4AIWebReadConfig(BaseModel):
+    """Configuration for web read provider."""
+
+    provider: Literal["crawl4ai"] = "crawl4ai"
+
+
 class Config(BaseModel):
-    """Main configuration for step 03."""
+    """Main configuration for step 06."""
 
     workspace: Path
     llm: LLMConfig
@@ -34,6 +54,8 @@ class Config(BaseModel):
     agents_path: Path = Field(default=Path("agents"))
     skills_path: Path = Field(default=Path("skills"))
     history_path: Path = Field(default=Path(".history"))
+    websearch: Union[BraveWebSearchConfig, TavilyWebSearchConfig, None] = None
+    webread: Crawl4AIWebReadConfig | None = None
 
     @model_validator(mode="after")
     def resolve_paths(self) -> "Config":
@@ -62,5 +84,5 @@ class Config(BaseModel):
         if not config_file.exists():
             raise FileNotFoundError(f"Config file not found: {config_file}")
 
-        with open(config_file) as f:
+        with open(config_file, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
