@@ -1,59 +1,52 @@
-"""Agent and AgentSession for step 06 with web tools support."""
-
-import asyncio
-import json
 import uuid
+import json
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
+
+from mybot.core.context_guard import ContextGuard
+from mybot.core.session_state import SessionState
+from mybot.provider.llm import LLMProvider
+from mybot.tools.registry import ToolRegistry
+from mybot.tools.skill_tool import create_skill_tool
+from mybot.tools.websearch_tool import create_websearch_tool
+from mybot.tools.webread_tool import create_webread_tool
 
 from litellm.types.completion import (
     ChatCompletionMessageParam as Message,
     ChatCompletionMessageToolCallParam,
 )
 
-from mybot.core.commands.registry import CommandRegistry
-from mybot.core.context_guard import ContextGuard
-from mybot.core.history import HistoryStore
-from mybot.core.session_state import SessionState
-from mybot.core.skill_loader import SkillLoader
-from mybot.provider.llm import LLMProvider, LLMToolCall
-from mybot.tools.registry import ToolRegistry
-from mybot.tools.skill_tool import create_skill_tool
-from mybot.tools.websearch_tool import create_websearch_tool
-from mybot.tools.webread_tool import create_webread_tool
-
 if TYPE_CHECKING:
+    from mybot.core.context import SharedContext
     from mybot.core.agent_loader import AgentDef
-    from mybot.utils.config import Config
+    from mybot.provider.llm import LLMToolCall
 
 
 class Agent:
     """A configured agent that creates and manages conversation sessions."""
 
-    def __init__(self, agent_def: "AgentDef", config: "Config") -> None:
+    def __init__(self, agent_def: "AgentDef", context: "SharedContext") -> None:
         self.agent_def = agent_def
-        self.config = config
+        self.context = context
         self.llm = LLMProvider.from_config(agent_def.llm)
-        self.skill_loader = SkillLoader.from_config(config)
-        self.history_store = HistoryStore.from_config(config)
-        self.command_registry = CommandRegistry.with_builtins()
 
     def _build_tools(self) -> ToolRegistry:
         """Build a ToolRegistry with tools appropriate for the session."""
         registry = ToolRegistry.with_builtins()
 
+        # Register skill tool if allowed
         if self.agent_def.allow_skills:
-            skill_tool = create_skill_tool(self.skill_loader)
+            skill_tool = create_skill_tool(self.context.skill_loader)
             if skill_tool:
                 registry.register(skill_tool)
 
-        # Add web tools if configured
-        websearch_tool = create_websearch_tool(self.config)
+        websearch_tool = create_websearch_tool(self.context)
         if websearch_tool:
             registry.register(websearch_tool)
 
-        webread_tool = create_webread_tool(self.config)
+        webread_tool = create_webread_tool(self.context)
         if webread_tool:
             registry.register(webread_tool)
 
@@ -64,48 +57,77 @@ class Agent:
         # Default to 80% of 200k context
         return 160000
 
-    def new_session(self, session_id: str | None = None) -> "AgentSession":
-        """Create or resume the most recent conversation session."""
-        tools = self._build_tools()
-        context_guard = ContextGuard(token_threshold=self._get_token_threshold())
-
-        if session_id is None:
-            sessions = self.history_store.list_sessions()
-            agent_sessions = [s for s in sessions if s.agent_id == self.agent_def.id]
-            if agent_sessions:
-                session_id = agent_sessions[0].id
-                messages = [
-                    m.to_message()
-                    for m in self.history_store.get_messages(session_id)
-                ]
-                state = SessionState(
-                    session_id=session_id,
-                    agent=self,
-                    messages=messages,
-                    history_store=self.history_store,
-                )
-                return AgentSession(
-                    agent=self,
-                    state=state,
-                    context_guard=context_guard,
-                    tools=tools,
-                    command_registry=self.command_registry,
-                )
-
+    def new_session(
+        self,
+        session_id: str | None = None,
+    ) -> "AgentSession":
+        """Create a new conversation session."""
         session_id = session_id or str(uuid.uuid4())
+        tools = self._build_tools()
+
+        # Create context guard for this session
+        context_guard = ContextGuard(
+            shared_context=self.context,
+            token_threshold=self._get_token_threshold(),
+        )
+
         state = SessionState(
             session_id=session_id,
             agent=self,
             messages=[],
-            history_store=self.history_store,
+            shared_context=self.context,
         )
-        self.history_store.create_session(self.agent_def.id, session_id)
+
+        session = AgentSession(
+            agent=self,
+            state=state,
+            context_guard=context_guard,
+            tools=tools,
+        )
+
+        self.context.history_store.create_session(self.agent_def.id, session_id)
+        return session
+
+    def resume_session(self, session_id: str) -> "AgentSession":
+        """Load an existing conversation session."""
+        session_query = [
+            session
+            for session in self.context.history_store.list_sessions()
+            if session.id == session_id
+        ]
+        if not session_query:
+            raise ValueError(f"Session not found: {session_id}")
+
+        session_info = session_query[0]
+
+        # Get all messages (no max_history limit)
+        history_messages = self.context.history_store.get_messages(session_id)
+
+        # Convert HistoryMessage to litellm Message format
+        messages: list[Message] = [msg.to_message() for msg in history_messages]
+
+        # Build tools for resumed session
+        tools = self._build_tools()
+
+        # Create context guard
+        context_guard = ContextGuard(
+            shared_context=self.context,
+            token_threshold=self._get_token_threshold(),
+        )
+
+        # Create SessionState with loaded messages
+        state = SessionState(
+            session_id=session_info.id,
+            agent=self,
+            messages=messages,
+            shared_context=self.context,
+        )
+
         return AgentSession(
             agent=self,
             state=state,
             context_guard=context_guard,
             tools=tools,
-            command_registry=self.command_registry,
         )
 
 
@@ -117,13 +139,17 @@ class AgentSession:
     state: SessionState
     context_guard: ContextGuard
     tools: ToolRegistry
-    command_registry: CommandRegistry
     started_at: datetime = field(default_factory=datetime.now)
 
     @property
     def session_id(self) -> str:
         """Delegate to state."""
         return self.state.session_id
+
+    @property
+    def shared_context(self) -> "SharedContext":
+        """Delegate to state."""
+        return self.state.shared_context
 
     async def chat(self, message: str) -> str:
         """Send a message to the LLM and get a response."""
@@ -134,9 +160,7 @@ class AgentSession:
 
         while True:
             messages = self.state.build_messages()
-
             self.state = await self.context_guard.check_and_compact(self.state)
-
             content, tool_calls = await self.agent.llm.chat(messages, tool_schemas)
 
             tool_call_dicts: list[ChatCompletionMessageToolCallParam] = [
@@ -153,6 +177,7 @@ class AgentSession:
             }
             if tool_call_dicts:
                 assistant_msg["tool_calls"] = tool_call_dicts
+
             self.state.add_message(assistant_msg)
 
             if not tool_calls:
@@ -166,7 +191,7 @@ class AgentSession:
 
     async def _handle_tool_calls(
         self,
-        tool_calls: list[LLMToolCall],
+        tool_calls: list["LLMToolCall"],
     ) -> None:
         """Handle tool calls from the LLM response."""
         tool_call_results = await asyncio.gather(
@@ -183,7 +208,7 @@ class AgentSession:
 
     async def _execute_tool_call(
         self,
-        tool_call: LLMToolCall,
+        tool_call: "LLMToolCall",
     ) -> str:
         """Execute a single tool call."""
         # Extract key arguments
@@ -198,4 +223,3 @@ class AgentSession:
             result = f"Error executing tool: {e}"
 
         return result
-

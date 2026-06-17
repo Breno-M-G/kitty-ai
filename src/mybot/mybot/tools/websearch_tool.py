@@ -7,15 +7,15 @@ from mybot.provider.web_search import WebSearchProvider
 
 if TYPE_CHECKING:
     from mybot.core.agent import AgentSession
-    from mybot.utils.config import Config
+    from mybot.core.context import SharedContext
 
 
-def create_websearch_tool(config: "Config") -> BaseTool | None:
-    """Factory to create websearch tool with injected config."""
-    if not config.websearch:
+def create_websearch_tool(context: "SharedContext") -> BaseTool | None:
+    """Factory to create websearch tool with injected context."""
+    if not context.config.websearch:
         return None
 
-    provider = WebSearchProvider.from_config(config)
+    provider = WebSearchProvider.from_config(context.config)
 
     @tool(
         name="websearch",

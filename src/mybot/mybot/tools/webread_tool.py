@@ -7,15 +7,15 @@ from mybot.provider.web_read import WebReadProvider
 
 if TYPE_CHECKING:
     from mybot.core.agent import AgentSession
-    from mybot.utils.config import Config
+    from mybot.core.context import SharedContext
 
 
-def create_webread_tool(config: "Config") -> BaseTool | None:
-    """Factory to create webread tool with injected config."""
-    if not config.webread:
+def create_webread_tool(context: "SharedContext") -> BaseTool | None:
+    """Factory to create webread tool with injected context."""
+    if not context.config.webread:
         return None
 
-    provider = WebReadProvider.from_config(config)
+    provider = WebReadProvider.from_config(context.config)
 
     @tool(
         name="webread",

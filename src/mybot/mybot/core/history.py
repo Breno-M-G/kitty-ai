@@ -211,4 +211,3 @@ class HistoryStore:
             if session.id == session_id:
                 return session
         return None
-

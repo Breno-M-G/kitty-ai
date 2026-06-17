@@ -38,7 +38,6 @@ class WebSearchProvider(ABC):
                 return BraveSearchProvider(config)
             case "tavily":
                 from .tavily import TavilySearchProvider
-
                 return TavilySearchProvider(config)
             case _:
                 raise ValueError(

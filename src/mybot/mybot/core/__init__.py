@@ -5,6 +5,7 @@ from .agent_loader import (
     AgentLoader,
     AgentDef,
 )
+from .context import SharedContext
 from .history import HistoryMessage, HistorySession, HistoryStore
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "AgentSession",
     "AgentDef",
     "AgentLoader",
+    "SharedContext",
     "HistoryStore",
     "HistoryMessage",
     "HistorySession",
