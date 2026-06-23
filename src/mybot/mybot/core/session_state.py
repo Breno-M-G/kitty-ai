@@ -1,4 +1,4 @@
-"""Session state container with persistence helpers."""
+﻿"""Session state container with persistence helpers."""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -10,6 +10,7 @@ from mybot.core.history import HistoryMessage
 if TYPE_CHECKING:
     from mybot.core.agent import Agent
     from mybot.core.context import SharedContext
+    from mybot.core.events import EventSource
 
 
 @dataclass
@@ -19,6 +20,7 @@ class SessionState:
     session_id: str
     agent: "Agent"
     messages: list[Message]
+    source: "EventSource"
     shared_context: "SharedContext"
 
     def add_message(self, message: Message) -> None:

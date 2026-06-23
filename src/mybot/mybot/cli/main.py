@@ -1,4 +1,4 @@
-"""CLI interface for my-bot using Typer."""
+﻿"""CLI interface for my-bot using Typer."""
 
 from pathlib import Path
 from typing import Annotated
@@ -7,6 +7,7 @@ import typer
 from rich.console import Console
 
 from mybot.cli.chat import chat_command
+from mybot.cli.server import server_command
 from mybot.utils.config import Config
 
 app = typer.Typer(
@@ -67,6 +68,12 @@ def chat(
 ) -> None:
     """Start interactive chat session."""
     chat_command(ctx, agent_id=agent)
+
+
+@app.command("server")
+def server(ctx: typer.Context) -> None:
+    """Start the 24/7 server for cron and messagebus execution."""
+    server_command(ctx)
 
 
 if __name__ == "__main__":

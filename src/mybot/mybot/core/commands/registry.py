@@ -1,4 +1,4 @@
-"""Command registry for managing slash commands."""
+﻿"""Command registry for managing slash commands."""
 
 from typing import TYPE_CHECKING
 
@@ -64,6 +64,7 @@ class CommandRegistry:
             SkillsCommand,
             CompactCommand,
             ContextCommand,
+            ClearCommand,
             SessionCommand,
         )
 
@@ -72,5 +73,6 @@ class CommandRegistry:
         registry.register(SkillsCommand())
         registry.register(CompactCommand())
         registry.register(ContextCommand())
+        registry.register(ClearCommand())
         registry.register(SessionCommand())
         return registry

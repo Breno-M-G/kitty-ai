@@ -1,13 +1,22 @@
-"""Central event bus for pub/sub event distribution."""
+﻿"""Central event bus for pub/sub event distribution."""
 
 import asyncio
+import json
 import logging
+import os
 from collections import defaultdict
-from typing import Awaitable, Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar, TYPE_CHECKING
 
 from mybot.server.worker import Worker
 
-from .events import Event
+from .events import (
+    Event,
+    OutboundEvent,
+    deserialize_event,
+)
+
+if TYPE_CHECKING:
+    from mybot.core.context import SharedContext
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +27,13 @@ Handler = Callable[[Event], Awaitable[None]]
 class EventBus(Worker):
     """Central event bus with subscription support and async dispatch."""
 
-    def __init__(self, context) -> None:
+    def __init__(self, context: "SharedContext"):
         super().__init__(context)
         self.context = context
         self._subscribers: dict[type[Event], list[Handler]] = defaultdict(list)
         self._queue: asyncio.Queue[Event] = asyncio.Queue()
+        self.pending_dir = context.config.event_path / "pending"
+        self.pending_dir.mkdir(parents=True, exist_ok=True)
 
     def subscribe(
         self, event_class: type[E], handler: Callable[[E], Awaitable[None]]
@@ -41,13 +52,14 @@ class EventBus(Worker):
     async def publish(self, event: Event) -> None:
         """Publish an event to the internal queue (non-blocking)."""
         await self._queue.put(event)
-        logger.debug(f"Queued {event.__class__.__name__} event")
+        logger.debug(f"Queued {event.__class__.__name__} event from {event.source}")
 
     async def run(self) -> None:
         """Process events from queue, starting with recovery."""
         logger.info("EventBus started")
 
-        # Process events from queue
+        await self._recover()
+
         try:
             while True:
                 event = await self._queue.get()
@@ -63,8 +75,9 @@ class EventBus(Worker):
 
     async def _dispatch(self, event: Event) -> None:
         """Persist if OUTBOUND, then notify subscribers."""
+        await self._persist_outbound(event)
         await self._notify_subscribers(event)
-        logger.debug(f"Dispatched {event.__class__.__name__} event")
+        logger.debug(f"Dispatched {event.__class__.__name__} event from {event.source}")
 
     async def _notify_subscribers(self, event: Event) -> None:
         """Notify all subscribers of an event (waits for all handlers to complete)."""
@@ -77,3 +90,53 @@ class EventBus(Worker):
         for result in results:
             if isinstance(result, Exception):
                 logger.error(f"Error in event handler: {result}")
+
+    async def _persist_outbound(self, event: Event) -> None:
+        """Persist event to disk (only OUTBOUND events)."""
+        if not isinstance(event, OutboundEvent):
+            return
+
+        filename = f"{event.timestamp}_{event.session_id}.json"
+        final_path = self.pending_dir / filename
+        tmp_path = self.pending_dir / f".tmp.{os.getpid()}.{filename}"
+
+        data = json.dumps(event.to_dict(), ensure_ascii=False)
+
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(str(tmp_path), str(final_path))
+        logger.debug(f"Persisted event to {final_path}")
+
+    async def _recover(self) -> int:
+        """Recover pending events from previous crash. Returns count recovered."""
+        pending_files = list(self.pending_dir.glob("*.json"))
+        if not pending_files:
+            return 0
+
+        logger.info(f"Recovering {len(pending_files)} pending events")
+        count = 0
+
+        for file_path in pending_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                event = deserialize_event(data)
+                await self._notify_subscribers(event)
+                count += 1
+                logger.debug(f"Recovered event from {file_path.name}")
+            except Exception as e:
+                logger.error(f"Failed to recover {file_path}: {e}")
+
+        logger.info(f"Recovered {count} events")
+        return count
+
+    def ack(self, event: Event) -> None:
+        """Acknowledge successful delivery, delete persisted event."""
+        filename = f"{event.timestamp}_{event.session_id}.json"
+        final_path = self.pending_dir / filename
+        if final_path.exists():
+            final_path.unlink()
+            logger.debug(f"Acked and deleted {filename}")

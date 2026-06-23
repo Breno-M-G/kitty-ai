@@ -1,4 +1,4 @@
-"""Websearch tool factory."""
+﻿"""Websearch tool factory."""
 
 from typing import TYPE_CHECKING
 
@@ -36,7 +36,6 @@ def create_websearch_tool(context: "SharedContext") -> BaseTool | None:
     )
     async def websearch(query: str, session: "AgentSession") -> str:
         """Search the web and return formatted results."""
-
         results = await provider.search(query)
 
         if not results:

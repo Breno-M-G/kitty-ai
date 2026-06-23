@@ -1,4 +1,4 @@
-"""Built-in slash command handlers."""
+﻿"""Built-in slash command handlers."""
 
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,6 @@ class SessionCommand(Command):
     async def execute(self, args: str, session: "AgentSession") -> str:
         info = session.shared_context.history_store.get_session_info(session.session_id)
 
-        # Handle case where session not found in index
         created_str = info.created_at if info else "Unknown"
 
         lines = [
@@ -26,6 +25,7 @@ class SessionCommand(Command):
             f"**Agent:** {session.agent.agent_def.name} (`{session.agent.agent_def.id}`)",
             f"**Created:** {created_str}",
             f"**Messages:** {len(session.state.messages)}",
+            f"**Source:** `{session.source}`",
         ]
         return "\n".join(lines)
 
@@ -52,10 +52,9 @@ class CompactCommand(Command):
     description = "Compact conversation context manually"
 
     async def execute(self, args: str, session: "AgentSession") -> str:
-        # Force compaction regardless of threshold
-        await session.context_guard._compact_messages(session.state)
+        session.state = await session.context_guard.compact_and_roll(session.state)
         msg_count = len(session.state.messages)
-        return f"✓ Context compacted. {msg_count} messages retained."
+        return f"Context compacted. {msg_count} messages retained."
 
 
 class ContextCommand(Command):
@@ -76,6 +75,24 @@ class ContextCommand(Command):
         return "\n".join(lines)
 
 
+class ClearCommand(Command):
+    """Clear conversation and start fresh."""
+
+    name = "clear"
+    description = "Clear conversation and start fresh"
+
+    async def execute(self, args: str, session: "AgentSession") -> str:
+        source_str = str(session.source)
+
+        if source_str in session.shared_context.config.sources:
+            del session.shared_context.config.sources[source_str]
+            session.shared_context.config.set_runtime(
+                "sources", session.shared_context.config.sources
+            )
+
+        return "Conversation cleared. Next message starts fresh."
+
+
 class SkillsCommand(Command):
     """List all skills or show skill details."""
 
@@ -93,12 +110,11 @@ class SkillsCommand(Command):
                 lines.append(f"- `{skill.id}`: {skill.description}")
             return "\n".join(lines)
 
-        # Show specific skill details
         skill_id = args.strip()
         try:
             skill = session.shared_context.skill_loader.load_skill(skill_id)
         except DefNotFoundError:
-            return f"✗ Skill `{skill_id}` not found."
+            return f"Skill `{skill_id}` not found."
 
         lines = [
             f"**Skill:** `{skill.id}`",

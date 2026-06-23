@@ -20,12 +20,14 @@ from mybot.core.context import SharedContext
 from mybot.core.events import (
     OutboundEvent,
     InboundEvent,
+    CliEventSource,
 )
 from mybot.server import (
     AgentWorker,
     Worker,
 )
-from mybot.utils.config import Config
+from mybot.utils.config import Config, ConfigReloader
+from mybot.utils.logging import setup_logging
 
 
 class ChatLoop:
@@ -34,7 +36,8 @@ class ChatLoop:
     def __init__(self, config: Config, agent_id: str | None = None):
         self.config = config
         self.console = Console()
-        self.context = SharedContext(config=config)
+        self.context = SharedContext(config=config, channels=[])
+        self.config_reloader = ConfigReloader(config)
 
         self.workers: list[Worker] = [
             self.context.eventbus,
@@ -50,6 +53,7 @@ class ChatLoop:
     async def handle_outbound_event(self, event: OutboundEvent) -> None:
         """Handle outbound events by adding to response queue."""
         await self.response_queue.put(event)
+        self.context.eventbus.ack(event)
 
     def get_user_input(self) -> str:
         """Get user input with styled prompt."""
@@ -60,33 +64,39 @@ class ChatLoop:
     def display_agent_response(self, content: str) -> None:
         """Display agent response with styled prefix."""
         prefix = Text(f"{self.agent_def.id}: ", style="green")
+
         self.console.print(prefix, end="")
         self.console.print(content)
 
     async def run(self) -> None:
         """Run the interactive chat loop."""
+        self.config_reloader.start()
+
         for worker in self.workers:
             worker.start()
 
-        # Auto-resume: carrega sessão mais recente ou cria nova
         agent = Agent(self.agent_def, self.context)
-        sessions = self.context.history_store.list_sessions()
-        agent_sessions = [s for s in sessions if s.agent_id == self.agent_def.id]
+        source = CliEventSource()
 
-        if agent_sessions:
-            session_id = agent_sessions[0].id
-            session = agent.resume_session(session_id)
-            msg_count = agent_sessions[0].message_count
+        sessions = self.context.history_store.list_sessions()
+        cli_sessions = [
+            s for s in sessions
+            if s.agent_id == self.agent_def.id and s.source == str(source)
+        ]
+
+        if cli_sessions:
+            session_id = cli_sessions[0].id
+            msg_count = cli_sessions[0].message_count
             self.console.print(
                 Panel(
-                    Text(f"Retomando sessão com {msg_count} mensagens anteriores.", style="bold cyan"),
+                    Text(f"Retomando sessao com {msg_count} mensagens anteriores.", style="bold cyan"),
                     title="Chat",
                     border_style="cyan",
                 )
             )
         else:
-            session = agent.new_session()
-            session_id = session.session_id
+            new_session = agent.new_session(source)
+            session_id = new_session.session_id
             self.console.print(
                 Panel(
                     Text("Welcome to my-bot!", style="bold cyan"),
@@ -109,6 +119,7 @@ class ChatLoop:
 
                 event = InboundEvent(
                     session_id=session_id,
+                    source=source,
                     content=user_input,
                 )
                 await self.context.eventbus.publish(event)
@@ -117,19 +128,24 @@ class ChatLoop:
                     response = await asyncio.wait_for(
                         self.response_queue.get(), timeout=60.0
                     )
+
                     self.display_agent_response(response.content)
                 except asyncio.TimeoutError:
                     self.console.print("[red]Agent response timed out[/red]")
+                    self.console.print()
 
         except (KeyboardInterrupt, EOFError):
             self.console.print("\n[bold yellow]Goodbye![/bold yellow]")
         finally:
             for worker in self.workers:
                 await worker.stop()
+            self.config_reloader.stop()
 
 
 def chat_command(ctx: typer.Context, agent_id: str | None = None) -> None:
     """Start interactive chat session."""
     config = ctx.obj.get("config")
+    setup_logging(config, console_output=False)
+
     chat_loop = ChatLoop(config, agent_id=agent_id)
     asyncio.run(chat_loop.run())

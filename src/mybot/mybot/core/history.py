@@ -1,12 +1,14 @@
-"""JSONL file-based conversation history backend."""
+﻿"""JSONL file-based conversation history backend."""
 
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from mybot.core.events import EventSource
 from litellm.types.completion import ChatCompletionMessageParam as Message
+
 
 if TYPE_CHECKING:
     from mybot.utils.config import Config
@@ -22,10 +24,22 @@ class HistorySession(BaseModel):
 
     id: str
     agent_id: str
+    source: str
     title: str | None = None
     message_count: int = 0
     created_at: str
     updated_at: str
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def parse_source(cls, v: Any) -> str:
+        if hasattr(v, "__str__"):
+            return str(v)
+        return v
+
+    def get_source(self) -> EventSource:
+        """Get the session's EventSource."""
+        return EventSource.from_string(self.source)
 
 
 class HistoryMessage(BaseModel):
@@ -106,7 +120,7 @@ class HistoryStore:
             return []
 
         sessions = []
-        with open(self.index_path) as f:
+        with open(self.index_path, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -118,7 +132,7 @@ class HistoryStore:
 
     def _write_index(self, sessions: list[HistorySession]) -> None:
         """Write all session entries to index.jsonl."""
-        with open(self.index_path, "w") as f:
+        with open(self.index_path, "w", encoding="utf-8") as f:
             for session in sessions:
                 f.write(session.model_dump_json() + "\n")
 
@@ -131,23 +145,24 @@ class HistoryStore:
                 return i
         return -1
 
-    def create_session(self, agent_id: str, session_id: str) -> dict[str, Any]:
+    def create_session(
+        self, agent_id: str, session_id: str, source: "EventSource",
+    ) -> dict[str, Any]:
         """Create a new conversation session."""
         now = _now_iso()
         session = HistorySession(
             id=session_id,
             agent_id=agent_id,
+            source=source,
             title=None,
             message_count=0,
             created_at=now,
             updated_at=now,
         )
 
-        # Append to index
-        with open(self.index_path, "a") as f:
+        with open(self.index_path, "a", encoding="utf-8") as f:
             f.write(session.model_dump_json() + "\n")
 
-        # Create session file
         self._session_path(session_id).touch()
 
         return session.model_dump()
@@ -161,16 +176,13 @@ class HistoryStore:
 
         session = sessions[idx]
 
-        # Append message to session file
         session_file = self._session_path(session_id)
-        with open(session_file, "a") as f:
+        with open(session_file, "a", encoding="utf-8") as f:
             f.write(message.model_dump_json() + "\n")
 
-        # Update index
         session.message_count += 1
         session.updated_at = _now_iso()
 
-        # Auto-generate title from first user message
         if session.title is None and message.role == "user":
             title = message.content[:50]
             if len(message.content) > 50:
@@ -193,7 +205,7 @@ class HistoryStore:
             return []
 
         messages: list[HistoryMessage] = []
-        with open(session_file) as f:
+        with open(session_file, encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line:

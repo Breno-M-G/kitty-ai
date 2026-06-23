@@ -1,4 +1,4 @@
-"""Context guard for proactive context window management."""
+﻿"""Context guard for proactive context window management."""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
@@ -11,12 +11,13 @@ from litellm.types.completion import (
 )
 
 from mybot.core.session_state import SessionState
+from mybot.utils.config import SourceSessionConfig
 
 if TYPE_CHECKING:
     from mybot.core.context import SharedContext
+    from mybot.core.session_state import SessionState
 
 
-# Default max size for tool result content before truncation
 MAX_TOOL_RESULT_CHARS = 10000
 
 COMPACT_PROMPT = """Your task is to create a detailed summary of the conversation so far, capturing the user's requests, your actions, and any important context needed to continue without losing information.
@@ -45,7 +46,7 @@ class ContextGuard:
     """Manages context window size with proactive compaction."""
 
     shared_context: "SharedContext"
-    token_threshold: int = 160000  # 80% of 200k context
+    token_threshold: int = 160000
     max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS
 
     def estimate_tokens(self, state: "SessionState") -> int:
@@ -60,24 +61,21 @@ class ContextGuard:
         self,
         state: "SessionState",
     ) -> "SessionState":
-        """Check token count, compact if needed."""
+        """Check token count, compact and roll session if needed."""
         token_count = self.estimate_tokens(state)
 
         if token_count < self.token_threshold:
             return state
 
-        # First try truncating large tool results
         state.messages = self._truncate_large_tool_results(state.messages)
         token_count = self.estimate_tokens(state)
 
         if token_count < self.token_threshold:
             return state
 
-        # If still over threshold, compact via summarization
-        return await self._compact_messages(state)
+        return await self.compact_and_roll(state)
 
     def _compress_message_count(self, state: "SessionState") -> int:
-        """Calculate how many messages to compress."""
         keep_count = max(4, int(len(state.messages) * 0.2))
         compress_count = max(2, int(len(state.messages) * 0.5))
         return min(compress_count, len(state.messages) - keep_count)
@@ -99,7 +97,10 @@ class ContextGuard:
                         f"[Truncated - original size: {original_size} chars]"
                     )
 
-                    msg = cast(ChatCompletionToolMessageParam, {**msg, "content": truncated_content})
+                    msg = cast(
+                        ChatCompletionToolMessageParam,
+                        {**msg, "content": truncated_content},
+                    )
 
             result.append(msg)
         return result
@@ -110,7 +111,6 @@ class ContextGuard:
         for msg in messages:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
-            # Handle tool calls in assistant messages
             if role == "assistant" and msg.get("tool_calls"):
                 tool_names = [
                     tc.get("function", {}).get("name", "unknown")
@@ -125,11 +125,25 @@ class ContextGuard:
                 lines.append(f"{role.upper()}: {content}")
         return "\n".join(lines)
 
-    async def _compact_messages(
+    async def compact_and_roll(
         self,
         state: "SessionState",
     ) -> "SessionState":
-        """Compact history by summarizing older messages."""
+        """Compact history, roll to new session, return new messages."""
+        new_session = state.agent.new_session(state.source)
+        self._config_source_session_cache(str(state.source), new_session.session_id)
+
+        compacted_history = await self._build_compacted_messages(state)
+        for message in compacted_history:
+            new_session.state.add_message(message)
+
+        return new_session.state
+
+    async def _build_compacted_messages(
+        self,
+        state: "SessionState",
+    ) -> list[Message]:
+        """Generate summary of older messages using agent's LLM."""
         compress_count = self._compress_message_count(state)
 
         old_messages = state.messages[:compress_count]
@@ -139,10 +153,9 @@ class ContextGuard:
 
         response, _ = await state.agent.llm.chat(
             [{"role": "user", "content": summary_prompt}],
-            [],  # No tools needed
+            [],
         )
 
-        # Build compacted message list
         messages: list[Message] = []
         messages.append(
             {
@@ -157,7 +170,9 @@ class ContextGuard:
             }
         )
         messages.extend(state.messages[compress_count:])
+        return messages
 
-        # Update state in place
-        state.messages = messages
-        return state
+    def _config_source_session_cache(self, source_str: str, session_id: str) -> None:
+        self.shared_context.config.set_runtime(
+            f"""sources.{source_str}""", SourceSessionConfig(session_id=session_id)
+        )

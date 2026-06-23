@@ -1,3 +1,5 @@
+﻿"""Agent and AgentSession for event-driven architecture."""
+
 import uuid
 import json
 import asyncio
@@ -7,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from mybot.core.context_guard import ContextGuard
 from mybot.core.session_state import SessionState
+from mybot.core.events import EventSource
 from mybot.provider.llm import LLMProvider
 from mybot.tools.registry import ToolRegistry
 from mybot.tools.skill_tool import create_skill_tool
@@ -36,7 +39,6 @@ class Agent:
         """Build a ToolRegistry with tools appropriate for the session."""
         registry = ToolRegistry.with_builtins()
 
-        # Register skill tool if allowed
         if self.agent_def.allow_skills:
             skill_tool = create_skill_tool(self.context.skill_loader)
             if skill_tool:
@@ -54,18 +56,17 @@ class Agent:
 
     def _get_token_threshold(self) -> int:
         """Get token threshold based on model's context window."""
-        # Default to 80% of 200k context
         return 160000
 
     def new_session(
         self,
+        source: EventSource,
         session_id: str | None = None,
     ) -> "AgentSession":
         """Create a new conversation session."""
         session_id = session_id or str(uuid.uuid4())
         tools = self._build_tools()
 
-        # Create context guard for this session
         context_guard = ContextGuard(
             shared_context=self.context,
             token_threshold=self._get_token_threshold(),
@@ -75,6 +76,7 @@ class Agent:
             session_id=session_id,
             agent=self,
             messages=[],
+            source=source,
             shared_context=self.context,
         )
 
@@ -85,7 +87,9 @@ class Agent:
             tools=tools,
         )
 
-        self.context.history_store.create_session(self.agent_def.id, session_id)
+        self.context.history_store.create_session(
+            self.agent_def.id, session_id, source
+        )
         return session
 
     def resume_session(self, session_id: str) -> "AgentSession":
@@ -99,27 +103,24 @@ class Agent:
             raise ValueError(f"Session not found: {session_id}")
 
         session_info = session_query[0]
+        source = session_info.get_source()
 
-        # Get all messages (no max_history limit)
         history_messages = self.context.history_store.get_messages(session_id)
 
-        # Convert HistoryMessage to litellm Message format
         messages: list[Message] = [msg.to_message() for msg in history_messages]
 
-        # Build tools for resumed session
         tools = self._build_tools()
 
-        # Create context guard
         context_guard = ContextGuard(
             shared_context=self.context,
             token_threshold=self._get_token_threshold(),
         )
 
-        # Create SessionState with loaded messages
         state = SessionState(
             session_id=session_info.id,
             agent=self,
             messages=messages,
+            source=source,
             shared_context=self.context,
         )
 
@@ -145,6 +146,10 @@ class AgentSession:
     def session_id(self) -> str:
         """Delegate to state."""
         return self.state.session_id
+
+    @property
+    def source(self) -> "EventSource":
+        return self.state.source
 
     @property
     def shared_context(self) -> "SharedContext":
@@ -211,7 +216,6 @@ class AgentSession:
         tool_call: "LLMToolCall",
     ) -> str:
         """Execute a single tool call."""
-        # Extract key arguments
         try:
             args = json.loads(tool_call.arguments)
         except json.JSONDecodeError:

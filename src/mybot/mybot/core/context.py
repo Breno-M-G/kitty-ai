@@ -1,8 +1,13 @@
+﻿"""Global shared application state."""
+
+from typing import Any
+
 from mybot.core.agent_loader import AgentLoader
 from mybot.core.commands.registry import CommandRegistry
 from mybot.core.history import HistoryStore
 from mybot.core.skill_loader import SkillLoader
 from mybot.core.eventbus import EventBus
+from mybot.channel.base import Channel
 from mybot.utils.config import Config
 
 
@@ -14,12 +19,21 @@ class SharedContext:
     agent_loader: AgentLoader
     skill_loader: SkillLoader
     command_registry: CommandRegistry
+    channels: list[Channel[Any]]
     eventbus: EventBus
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, channels: list[Channel[Any]] | None = None
+    ) -> None:
         self.config = config
         self.history_store = HistoryStore.from_config(config)
         self.agent_loader = AgentLoader.from_config(config)
         self.skill_loader = SkillLoader.from_config(config)
         self.command_registry = CommandRegistry.with_builtins()
+
+        if channels is not None:
+            self.channels = channels
+        else:
+            self.channels = Channel.from_config(config)
+
         self.eventbus = EventBus(self)

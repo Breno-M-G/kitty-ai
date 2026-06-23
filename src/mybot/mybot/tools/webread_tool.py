@@ -1,4 +1,4 @@
-"""Webread tool factory."""
+﻿"""Webread tool factory."""
 
 from typing import TYPE_CHECKING
 
@@ -36,7 +36,6 @@ def create_webread_tool(context: "SharedContext") -> BaseTool | None:
     )
     async def webread(url: str, session: "AgentSession") -> str:
         """Read a web page and return markdown content."""
-
         result = await provider.read(url)
 
         if result.error:
