@@ -1,4 +1,4 @@
-﻿"""Telegram channel implementation."""
+"""Telegram channel implementation."""
 
 import asyncio
 from dataclasses import dataclass
@@ -73,6 +73,7 @@ class TelegramChannel(Channel[TelegramEventSource]):
                 and update.effective_chat
                 and update.message.from_user
             ):
+                # Extract user_id (the person) and chat_id (the conversation)
                 user_id = str(update.message.from_user.id)
                 chat_id = str(update.effective_chat.id)
                 message = update.message.text
@@ -91,6 +92,7 @@ class TelegramChannel(Channel[TelegramEventSource]):
         handler = MessageHandler(filters.TEXT, handle_message)
         self.application.add_handler(handler)
 
+        # Start the bot
         await self.application.initialize()
         await self.application.start()
         if self.application.updater:
@@ -98,12 +100,13 @@ class TelegramChannel(Channel[TelegramEventSource]):
 
         logger.info("TelegramChannel started")
 
+        # Create the running task that monitors for stop
         async def run_until_stopped():
             """Run until stop() is called or updater stops unexpectedly."""
             while self.application and self.application.updater:
                 if self.application.updater.running:
                     if self._stop_event and self._stop_event.is_set():
-                        return
+                        return  # Graceful stop
                     await asyncio.sleep(1)
                 else:
                     if self._stop_event and not self._stop_event.is_set():
@@ -129,10 +132,12 @@ class TelegramChannel(Channel[TelegramEventSource]):
 
     async def stop(self) -> None:
         """Stop Telegram bot and cleanup."""
+        # Idempotent: skip if not running
         if self.application is None:
             logger.debug("TelegramChannel not running, skipping stop")
             return
 
+        # Signal the running task to stop
         if self._stop_event:
             self._stop_event.set()
 
@@ -141,13 +146,14 @@ class TelegramChannel(Channel[TelegramEventSource]):
         await self.application.stop()
         await self.application.shutdown()
 
+        # Wait for running task to complete
         if self._running_task and not self._running_task.done():
             try:
                 await asyncio.wait_for(self._running_task, timeout=2.0)
             except asyncio.TimeoutError:
                 logger.warning("Running task did not complete in time")
             except Exception:
-                pass
+                pass  # Task may have already failed
 
         self.application = None
         self._running_task = None

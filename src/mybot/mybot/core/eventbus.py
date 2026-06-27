@@ -1,4 +1,4 @@
-﻿"""Central event bus for pub/sub event distribution."""
+"""Central event bus for pub/sub event distribution."""
 
 import asyncio
 import json
@@ -58,6 +58,7 @@ class EventBus(Worker):
         """Process events from queue, starting with recovery."""
         logger.info("EventBus started")
 
+        # Run recovery first
         await self._recover()
 
         try:
@@ -102,6 +103,7 @@ class EventBus(Worker):
 
         data = json.dumps(event.to_dict(), ensure_ascii=False)
 
+        # Atomic write: tmp + fsync + rename
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(data)
             f.flush()
@@ -123,6 +125,7 @@ class EventBus(Worker):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # Use deserialize_event to handle typed events
                 event = deserialize_event(data)
                 await self._notify_subscribers(event)
                 count += 1

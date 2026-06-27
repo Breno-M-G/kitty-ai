@@ -1,4 +1,4 @@
-﻿"""Command registry for managing slash commands."""
+"""Command registry for managing slash commands."""
 
 from typing import TYPE_CHECKING
 

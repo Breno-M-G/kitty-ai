@@ -1,4 +1,4 @@
-﻿"""Channel implementations for different platforms."""
+"""Channel implementations for different platforms."""
 
 from mybot.channel.base import Channel
 from mybot.channel.telegram_channel import TelegramChannel

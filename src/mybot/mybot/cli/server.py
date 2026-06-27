@@ -1,4 +1,4 @@
-﻿"""Server CLI command for worker-based architecture."""
+"""Server CLI command for worker-based architecture."""
 
 import asyncio
 

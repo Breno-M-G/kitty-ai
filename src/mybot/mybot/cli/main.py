@@ -1,4 +1,4 @@
-﻿"""CLI interface for my-bot using Typer."""
+"""CLI interface for my-bot using Typer."""
 
 from pathlib import Path
 from typing import Annotated

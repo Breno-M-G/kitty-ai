@@ -1,10 +1,3 @@
-﻿import sys
-if sys.platform == 'win32':
-    import ctypes
-    ctypes.windll.kernel32.SetConsoleOutputCP(65001)
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-
 """Chat CLI command for interactive sessions with event-driven architecture."""
 
 import asyncio
@@ -70,42 +63,23 @@ class ChatLoop:
 
     async def run(self) -> None:
         """Run the interactive chat loop."""
+        self.console.print(
+            Panel(
+                Text("Welcome to my-bot!", style="bold cyan"),
+                title="Chat",
+                border_style="cyan",
+            )
+        )
+        self.console.print("Type '/help' for commands, 'quit' or 'exit' to end.\n")
+
         self.config_reloader.start()
 
         for worker in self.workers:
             worker.start()
 
-        agent = Agent(self.agent_def, self.context)
-        source = CliEventSource()
-
-        sessions = self.context.history_store.list_sessions()
-        cli_sessions = [
-            s for s in sessions
-            if s.agent_id == self.agent_def.id and s.source == str(source)
-        ]
-
-        if cli_sessions:
-            session_id = cli_sessions[0].id
-            msg_count = cli_sessions[0].message_count
-            self.console.print(
-                Panel(
-                    Text(f"Retomando sessao com {msg_count} mensagens anteriores.", style="bold cyan"),
-                    title="Chat",
-                    border_style="cyan",
-                )
-            )
-        else:
-            new_session = agent.new_session(source)
-            session_id = new_session.session_id
-            self.console.print(
-                Panel(
-                    Text("Welcome to my-bot!", style="bold cyan"),
-                    title="Chat",
-                    border_style="cyan",
-                )
-            )
-
-        self.console.print("Type '/help' for commands, 'quit' or 'exit' to end.\n")
+        session_id = (
+            Agent(self.agent_def, self.context).new_session(CliEventSource()).session_id
+        )
 
         try:
             while True:
@@ -119,7 +93,7 @@ class ChatLoop:
 
                 event = InboundEvent(
                     session_id=session_id,
-                    source=source,
+                    source=CliEventSource(),
                     content=user_input,
                 )
                 await self.context.eventbus.publish(event)

@@ -144,16 +144,25 @@ class DeliveryWorker(SubscriberWorker):
     async def handle_event(self, event: OutboundEvent) -> None:
         """Handle an outbound message event."""
         try:
+            if not event.content or not event.content.strip():
+                self.logger.warning(
+                    f"Empty content for session {event.session_id}, skipping delivery and acking"
+                )
+                self.context.eventbus.ack(event)
+                return
+
             session_info = self._get_session_source(event.session_id)
 
             if not session_info or not session_info.source:
                 self.logger.warning(
                     f"No source for session {event.session_id}, skipping delivery"
                 )
+                self.context.eventbus.ack(event)
                 return
 
             source = self._get_delivery_source(session_info)
             if not source or not source.platform_name:
+                self.context.eventbus.ack(event)
                 return
 
             limit = PLATFORM_LIMITS.get(source.platform_name, float("inf"))

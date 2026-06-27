@@ -1,4 +1,4 @@
-﻿"""Abstract base class for channel implementations."""
+"""Abstract base class for channel implementations."""
 
 from abc import ABC, abstractmethod
 from typing import Callable, Awaitable, Generic, TypeVar, Any
@@ -42,6 +42,7 @@ class Channel(ABC, Generic[T]):
     @staticmethod
     def from_config(config: Config) -> list["Channel[Any]"]:
         """Create channel instances from configuration."""
+        # Inline imports to avoid circular dependency
         from mybot.channel.telegram_channel import TelegramChannel
         from mybot.channel.discord_channel import DiscordChannel
 

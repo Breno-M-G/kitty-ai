@@ -4,10 +4,14 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+import uvicorn
+
 from .worker import Worker
 from .agent_worker import AgentWorker
 from .delivery_worker import DeliveryWorker
 from .channel_worker import ChannelWorker
+from .websocket_worker import WebSocketWorker
+from .app import create_app
 from mybot.utils.config import ConfigReloader
 
 if TYPE_CHECKING:
@@ -22,12 +26,16 @@ class Server:
     def __init__(self, context: "SharedContext"):
         self.context = context
         self.workers: list[Worker] = []
+        self._api_task: asyncio.Task | None = None
         self.config_reloader: ConfigReloader = ConfigReloader(self.context.config)
 
     async def run(self) -> None:
         """Start all workers and monitor for crashes."""
         self._setup_workers()
         self._start_workers()
+
+        if self.context.config.api:
+            self._api_task = asyncio.create_task(self._run_api())
 
         try:
             await self._monitor_workers()
@@ -40,10 +48,14 @@ class Server:
         """Create all workers."""
         self.config_reloader.start()
 
+        ws_worker = WebSocketWorker(self.context)
+        self.context.websocket_worker = ws_worker
+
         self.workers = [
             self.context.eventbus,
             AgentWorker(self.context),
             DeliveryWorker(self.context),
+            ws_worker,
         ]
 
         if self.context.config.channels.enabled:
@@ -87,3 +99,20 @@ class Server:
 
         if self.config_reloader is not None:
             self.config_reloader.stop()
+
+    async def _run_api(self) -> None:
+        """Run the WebSocket API server."""
+        if not self.context.config.api:
+            return
+
+        app = create_app(self.context)
+        config = uvicorn.Config(
+            app,
+            host=self.context.config.api.host,
+            port=self.context.config.api.port,
+        )
+        server = uvicorn.Server(config)
+        logger.info(
+            f"WebSocket server started on {self.context.config.api.host}:{self.context.config.api.port}"
+        )
+        await server.serve()

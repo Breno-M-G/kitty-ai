@@ -1,6 +1,4 @@
-﻿"""Global shared application state."""
-
-from typing import Any
+﻿from typing import Any, TYPE_CHECKING, TYPE_CHECKING
 
 from mybot.core.agent_loader import AgentLoader
 from mybot.core.commands.registry import CommandRegistry
@@ -9,6 +7,12 @@ from mybot.core.skill_loader import SkillLoader
 from mybot.core.eventbus import EventBus
 from mybot.channel.base import Channel
 from mybot.utils.config import Config
+
+if TYPE_CHECKING:
+    from mybot.server.websocket_worker import WebSocketWorker
+
+if TYPE_CHECKING:
+    from mybot.server.websocket_worker import WebSocketWorker
 
 
 class SharedContext:
@@ -21,6 +25,8 @@ class SharedContext:
     command_registry: CommandRegistry
     channels: list[Channel[Any]]
     eventbus: EventBus
+    websocket_worker: "WebSocketWorker | None"
+    websocket_worker: "WebSocketWorker | None"
 
     def __init__(
         self, config: Config, channels: list[Channel[Any]] | None = None
@@ -37,3 +43,9 @@ class SharedContext:
             self.channels = Channel.from_config(config)
 
         self.eventbus = EventBus(self)
+        self.websocket_worker = None
+        self.websocket_worker = None
+
+
+
+

@@ -1,4 +1,4 @@
-﻿"""JSONL file-based conversation history backend."""
+"""JSONL file-based conversation history backend."""
 
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +24,7 @@ class HistorySession(BaseModel):
 
     id: str
     agent_id: str
-    source: str
+    source: str  # Serialized EventSource (e.g., "platform-telegram:123:456")
     title: str | None = None
     message_count: int = 0
     created_at: str
@@ -120,7 +120,7 @@ class HistoryStore:
             return []
 
         sessions = []
-        with open(self.index_path, encoding="utf-8", errors="replace") as f:
+        with open(self.index_path) as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -132,7 +132,7 @@ class HistoryStore:
 
     def _write_index(self, sessions: list[HistorySession]) -> None:
         """Write all session entries to index.jsonl."""
-        with open(self.index_path, "w", encoding="utf-8") as f:
+        with open(self.index_path, "w") as f:
             for session in sessions:
                 f.write(session.model_dump_json() + "\n")
 
@@ -160,9 +160,11 @@ class HistoryStore:
             updated_at=now,
         )
 
-        with open(self.index_path, "a", encoding="utf-8") as f:
+        # Append to index
+        with open(self.index_path, "a") as f:
             f.write(session.model_dump_json() + "\n")
 
+        # Create session file
         self._session_path(session_id).touch()
 
         return session.model_dump()
@@ -176,13 +178,16 @@ class HistoryStore:
 
         session = sessions[idx]
 
+        # Append message to session file
         session_file = self._session_path(session_id)
-        with open(session_file, "a", encoding="utf-8") as f:
+        with open(session_file, "a") as f:
             f.write(message.model_dump_json() + "\n")
 
+        # Update index
         session.message_count += 1
         session.updated_at = _now_iso()
 
+        # Auto-generate title from first user message
         if session.title is None and message.role == "user":
             title = message.content[:50]
             if len(message.content) > 50:
@@ -205,7 +210,7 @@ class HistoryStore:
             return []
 
         messages: list[HistoryMessage] = []
-        with open(session_file, encoding="utf-8", errors="replace") as f:
+        with open(session_file) as f:
             for line in f:
                 line = line.strip()
                 if line:

@@ -1,4 +1,4 @@
-﻿"""Session state container with persistence helpers."""
+"""Session state container with persistence helpers."""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING

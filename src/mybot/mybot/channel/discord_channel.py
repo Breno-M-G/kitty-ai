@@ -62,6 +62,10 @@ class DiscordChannel(Channel[DiscordEventSource]):
         self.client = discord.Client(intents=intents)
 
         @self.client.event
+        async def on_ready() -> None:
+            logger.info(f"Discord gateway connected as {self.client.user}")
+
+        @self.client.event
         async def on_message(message: discord.Message) -> None:
             """Handle incoming Discord message."""
             if self.client and message.author == self.client.user:
@@ -142,4 +146,3 @@ class DiscordChannel(Channel[DiscordEventSource]):
         self.client = None
         self._running_task = None
         logger.info("DiscordChannel stopped")
-
