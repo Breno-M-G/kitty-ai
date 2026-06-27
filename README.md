@@ -114,10 +114,10 @@ channels:
 
 ## Roadmap
 
-Baseado nos próximos steps do tutorial:
-- [ ] Multi-agent routing
+Baseado nos próximos steps:
+- [X] Multi-agent routing
 - [ ] Cron / heartbeat (tarefas agendadas)
-- [ ] Multi-layer prompts
+- [X] Multi-layer prompts
 - [ ] Memória de longo prazo estruturada
 - [ ] HUD desktop/mobile
 - [ ] Integração com Obsidian
