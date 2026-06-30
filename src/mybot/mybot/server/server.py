@@ -1,4 +1,4 @@
-﻿"""Server orchestrator for worker-based architecture."""
+"""Server orchestrator for worker-based architecture."""
 
 import asyncio
 import logging
@@ -34,6 +34,7 @@ class Server:
         self._setup_workers()
         self._start_workers()
 
+        # Start API server if configured
         if self.context.config.api:
             self._api_task = asyncio.create_task(self._run_api())
 
@@ -48,14 +49,15 @@ class Server:
         """Create all workers."""
         self.config_reloader.start()
 
+        # Create WebSocketWorker first and attach to context
         ws_worker = WebSocketWorker(self.context)
         self.context.websocket_worker = ws_worker
 
         self.workers = [
-            self.context.eventbus,
-            AgentWorker(self.context),
-            DeliveryWorker(self.context),
-            ws_worker,
+            self.context.eventbus,  # EventBus (active worker)
+            AgentWorker(self.context),  # SubscriberWorker
+            DeliveryWorker(self.context),  # SubscriberWorker
+            ws_worker,  # WebSocketWorker (SubscriberWorker)
         ]
 
         if self.context.config.channels.enabled:
@@ -97,6 +99,7 @@ class Server:
         for worker in self.workers:
             await worker.stop()
 
+        # Stop config reloader
         if self.config_reloader is not None:
             self.config_reloader.stop()
 

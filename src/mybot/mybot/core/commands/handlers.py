@@ -1,5 +1,6 @@
-"""Built-in slash command handlers."""
+﻿"""Built-in slash command handlers."""
 
+import re
 from typing import TYPE_CHECKING
 
 from mybot.core.commands.base import Command
@@ -18,7 +19,6 @@ class SessionCommand(Command):
     async def execute(self, args: str, session: "AgentSession") -> str:
         info = session.shared_context.history_store.get_session_info(session.session_id)
 
-        # Handle case where session not found in index
         created_str = info.created_at if info else "Unknown"
 
         lines = [
@@ -53,10 +53,9 @@ class CompactCommand(Command):
     description = "Compact conversation context manually"
 
     async def execute(self, args: str, session: "AgentSession") -> str:
-        # Force compaction regardless of threshold
-        await session.context_guard._compact_messages(session.state)
+        session.state = await session.context_guard.compact_and_roll(session.state)
         msg_count = len(session.state.messages)
-        return f"✓ Context compacted. {msg_count} messages retained."
+        return f"Context compacted. {msg_count} messages retained."
 
 
 class ContextCommand(Command):
@@ -85,14 +84,8 @@ class ClearCommand(Command):
 
     async def execute(self, args: str, session: "AgentSession") -> str:
         source_str = str(session.source)
-
-        if source_str in self.shared_context.config.sources:
-            del self.shared_context.config.sources[source_str]
-            self.shared_context.config.set_runtime(
-                "sources", self.shared_context.config.sources
-            )
-
-        return "✓ Conversation cleared. Next message starts fresh."
+        session.shared_context.routing_table.config_source_session_cache(source_str, None)
+        return "Conversation cleared. Next message starts fresh."
 
 
 class SkillsCommand(Command):
@@ -112,12 +105,11 @@ class SkillsCommand(Command):
                 lines.append(f"- `{skill.id}`: {skill.description}")
             return "\n".join(lines)
 
-        # Show specific skill details
         skill_id = args.strip()
         try:
             skill = session.shared_context.skill_loader.load_skill(skill_id)
         except DefNotFoundError:
-            return f"✗ Skill `{skill_id}` not found."
+            return f"Skill `{skill_id}` not found."
 
         lines = [
             f"**Skill:** `{skill.id}`",
@@ -125,4 +117,85 @@ class SkillsCommand(Command):
             f"**Description:** {skill.description}",
             f"\n---\n\n**SKILL.md:**\n```\n{skill.content}\n```",
         ]
+        return "\n".join(lines)
+
+
+class AgentCommand(Command):
+    """List agents or show agent details."""
+
+    name = "agent"
+    aliases = ["agents"]
+    description = "List agents or show agent details"
+
+    async def execute(self, args: str, session: "AgentSession") -> str:
+        if not args:
+            agents = session.shared_context.agent_loader.discover_agents()
+            lines = ["**Agents:**"]
+            for agent in agents:
+                marker = " (current)" if agent.id == session.agent.agent_def.id else ""
+                lines.append(f"- `{agent.id}`: {agent.description}{marker}")
+            return "\n".join(lines)
+
+        agent_id = args.strip()
+        try:
+            agent_def = session.shared_context.agent_loader.load(agent_id)
+        except DefNotFoundError:
+            return f"Agent `{agent_id}` not found."
+
+        lines = [
+            f"**Agent:** `{agent_def.id}`",
+            f"**Name:** {agent_def.name}",
+            f"**Description:** {agent_def.description}",
+            f"**LLM:** {agent_def.llm.model}",
+        ]
+
+        lines.append(f"\n---\n\n**AGENT.md:**\n```\n{agent_def.agent_md}\n```")
+
+        return "\n".join(lines)
+
+
+class RouteCommand(Command):
+    """Create a routing binding."""
+
+    name = "route"
+    description = "Create a routing binding (persists to config)"
+
+    async def execute(self, args: str, session: "AgentSession") -> str:
+        parts = args.strip().split(None, 1)
+        if len(parts) != 2:
+            return "**Usage:** `/route <source_pattern> <agent_id>`\n\nExample: `/route platform-telegram:.* pickle`"
+
+        pattern, agent_id = parts
+
+        try:
+            re.compile(f"^{pattern}$")
+        except re.error as e:
+            return f"Invalid regex pattern: {e}"
+
+        try:
+            session.shared_context.agent_loader.load(agent_id)
+        except DefNotFoundError:
+            return f"Agent `{agent_id}` not found."
+
+        session.shared_context.routing_table.persist_binding(pattern, agent_id)
+
+        return f"Route bound: `{pattern}` -> `{agent_id}`"
+
+
+class BindingsCommand(Command):
+    """Show all routing bindings."""
+
+    name = "bindings"
+    description = "Show all routing bindings"
+
+    async def execute(self, args: str, session: "AgentSession") -> str:
+        bindings = session.shared_context.config.routing.get("bindings", [])
+
+        if not bindings:
+            return "No routing bindings configured."
+
+        lines = ["**Routing Bindings:**"]
+        for binding in bindings:
+            lines.append(f"- `{binding['value']}` -> `{binding['agent']}`")
+
         return "\n".join(lines)

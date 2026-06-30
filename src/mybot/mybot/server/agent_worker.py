@@ -1,4 +1,4 @@
-﻿"""Agent worker for executing agent jobs."""
+"""Agent worker for executing agent jobs."""
 
 import asyncio
 import logging
@@ -14,6 +14,7 @@ from mybot.core.events import (
 from mybot.utils.def_loader import DefNotFoundError
 
 
+# Maximum number of retry attempts for failed sessions
 MAX_RETRIES = 3
 
 logger = logging.getLogger(__name__)
@@ -25,11 +26,13 @@ class AgentWorker(SubscriberWorker):
     def __init__(self, context):
         super().__init__(context)
 
+        # Auto-subscribe to events
         self.context.eventbus.subscribe(InboundEvent, self.dispatch_event)
         self.logger.info("AgentWorker subscribed to InboundEvent events")
 
     async def dispatch_event(self, event: InboundEvent) -> None:
         """Create executor task for typed event."""
+        # Get agent_id from session (single source of truth)
         session_info = self.context.history_store.get_session_info(event.session_id)
         if not session_info:
             logger.error(f"Session not found: {event.session_id}")
@@ -41,7 +44,8 @@ class AgentWorker(SubscriberWorker):
             agent_def = self.context.agent_loader.load(agent_id)
         except DefNotFoundError as e:
             logger.error(f"Agent not found: {agent_id}: {e}")
-            return await self._emit_response(event, "", agent_id, str(e))
+
+            return await self._emit_response(event, "", agent_def.id, str(e))
 
         asyncio.create_task(self.exec_session(event, agent_def))
 
@@ -55,16 +59,18 @@ class AgentWorker(SubscriberWorker):
                     session = agent.resume_session(session_id)
                 except ValueError:
                     logger.warning(f"Session {session_id} not found, creating new")
-                    session = agent.new_session(event.source, session_id=session_id)
+                    session = agent.new_session(session_id=session_id)
             else:
-                session = agent.new_session(event.source)
+                session = agent.new_session()
                 session_id = session.session_id
 
+            # Check for slash command FIRST
             if event.content.startswith("/"):
                 result = await self.context.command_registry.dispatch(
                     event.content, session
                 )
                 if result:
+                    # Emit response and skip agent chat
                     await self._emit_response(event, result, agent_def.id)
                     logger.info(f"Command completed: {session_id}")
                     return
@@ -78,14 +84,16 @@ class AgentWorker(SubscriberWorker):
             logger.error(f"Session failed: {e}")
 
             if event.retry_count < MAX_RETRIES:
+                # Use dataclasses.replace() for retry logic
                 retry_event = replace(
                     event,
                     retry_count=event.retry_count + 1,
-                    content=".",
+                    content=".",  # Minimal message for retry
                 )
                 await self.context.eventbus.publish(retry_event)
             else:
                 await self._emit_response(event, "", agent_def.id, str(e))
+
 
     async def _emit_response(
         self,
@@ -95,6 +103,7 @@ class AgentWorker(SubscriberWorker):
         error: str | None = None,
     ) -> None:
         """Emit response event with content."""
+
         result_event = OutboundEvent(
             session_id=event.session_id,
             source=AgentEventSource(agent_id),

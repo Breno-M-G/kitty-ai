@@ -1,5 +1,3 @@
-﻿"""Agent and AgentSession for event-driven architecture."""
-
 import uuid
 import json
 import asyncio
@@ -39,6 +37,7 @@ class Agent:
         """Build a ToolRegistry with tools appropriate for the session."""
         registry = ToolRegistry.with_builtins()
 
+        # Register skill tool if allowed
         if self.agent_def.allow_skills:
             skill_tool = create_skill_tool(self.context.skill_loader)
             if skill_tool:
@@ -56,6 +55,7 @@ class Agent:
 
     def _get_token_threshold(self) -> int:
         """Get token threshold based on model's context window."""
+        # Default to 80% of 200k context
         return 160000
 
     def new_session(
@@ -67,6 +67,7 @@ class Agent:
         session_id = session_id or str(uuid.uuid4())
         tools = self._build_tools()
 
+        # Create context guard for this session
         context_guard = ContextGuard(
             shared_context=self.context,
             token_threshold=self._get_token_threshold(),
@@ -105,17 +106,22 @@ class Agent:
         session_info = session_query[0]
         source = session_info.get_source()
 
+        # Get all messages (no max_history limit)
         history_messages = self.context.history_store.get_messages(session_id)
 
+        # Convert HistoryMessage to litellm Message format
         messages: list[Message] = [msg.to_message() for msg in history_messages]
 
+        # Build tools for resumed session
         tools = self._build_tools()
 
+        # Create context guard
         context_guard = ContextGuard(
             shared_context=self.context,
             token_threshold=self._get_token_threshold(),
         )
 
+        # Create SessionState with loaded messages
         state = SessionState(
             session_id=session_info.id,
             agent=self,
@@ -216,6 +222,7 @@ class AgentSession:
         tool_call: "LLMToolCall",
     ) -> str:
         """Execute a single tool call."""
+        # Extract key arguments
         try:
             args = json.loads(tool_call.arguments)
         except json.JSONDecodeError:

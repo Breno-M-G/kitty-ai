@@ -5,15 +5,12 @@ import time
 import dataclasses
 from typing import TYPE_CHECKING, Set
 
-from mybot.core.agent import Agent
-
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from pydantic import ValidationError, BaseModel, Field
 
 from .worker import SubscriberWorker
-from mybot.core.events import Event, EventSource, InboundEvent, OutboundEvent, WebSocketEventSource
-from mybot.utils.config import SourceSessionConfig
+from mybot.core.events import Event, InboundEvent, OutboundEvent, WebSocketEventSource
 
 if TYPE_CHECKING:
     from mybot.core.context import SharedContext
@@ -86,7 +83,11 @@ class WebSocketWorker(SubscriberWorker):
         """Normalize WebSocketMessage to InboundEvent."""
         source = WebSocketEventSource(user_id=msg.source)
 
-        session_id = self._get_or_create_session_id(source)
+        agent_id = msg.agent_id
+        if agent_id is None:
+            agent_id = self.context.routing_table.resolve(str(source))
+
+        session_id = self.context.routing_table.get_or_create_session_id(source)
 
         return InboundEvent(
             session_id=session_id,
@@ -118,21 +119,3 @@ class WebSocketWorker(SubscriberWorker):
             except Exception as e:
                 self.logger.error(f"Failed to send to client: {e}")
                 self.clients.discard(client)
-
-    def _get_or_create_session_id(self, source: "EventSource") -> str:
-        """Get or create session ID for a given source."""
-        source_str = str(source)
-
-        source_session = self.context.config.sources.get(source_str)
-        if source_session:
-            return source_session.session_id
-
-        agent_def = self.context.agent_loader.load(self.context.config.default_agent)
-        agent = Agent(agent_def, self.context)
-        session = agent.new_session(source)
-
-        self.context.config.set_runtime(
-            f"sources.{source_str}", SourceSessionConfig(session_id=session.session_id)
-        )
-
-        return session.session_id

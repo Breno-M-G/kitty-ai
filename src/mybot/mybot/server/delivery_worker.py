@@ -1,4 +1,4 @@
-﻿"""Worker that delivers outbound messages to platforms."""
+"""Worker that delivers outbound messages to platforms."""
 
 import asyncio
 import logging
@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-BACKOFF_MS = [5000, 25000, 120000, 600000]
+# Retry configuration
+BACKOFF_MS = [5000, 25000, 120000, 600000]  # 5s, 25s, 2min, 10min
 MAX_RETRIES = 5
 
 
@@ -25,17 +26,20 @@ def compute_backoff_ms(retry_count: int) -> int:
     if retry_count <= 0:
         return 0
 
+    # Cap at last backoff value
     idx = min(retry_count - 1, len(BACKOFF_MS) - 1)
     base = BACKOFF_MS[idx]
 
+    # Add +/- 20% jitter
     jitter = random.randint(-base // 5, base // 5)
     return max(0, base + jitter)
 
 
+# Platform message size limits
 PLATFORM_LIMITS: dict[str, float] = {
     "telegram": 4096,
     "discord": 2000,
-    "cli": float("inf"),
+    "cli": float("inf"),  # no limit
 }
 
 
@@ -49,6 +53,7 @@ def chunk_message(content: str, limit: int) -> list[str]:
     current = ""
 
     for para in paragraphs:
+        # Try to add to current chunk
         if current:
             potential = current + "\n\n" + para
         else:
@@ -60,7 +65,9 @@ def chunk_message(content: str, limit: int) -> list[str]:
             if current:
                 chunks.append(current)
 
+            # Handle paragraph that exceeds limit
             if len(para) > limit:
+                # Hard split
                 for i in range(0, len(para), limit):
                     chunks.append(para[i : i + limit])
                 current = ""
@@ -119,9 +126,11 @@ class DeliveryWorker(SubscriberWorker):
         """Get the delivery source for a session."""
         source = session_info.get_source()
 
+        # If source already has a platform, use it
         if source.platform_name:
             return source
 
+        # Try default delivery source for agent events
         default_source_str = self.context.config.default_delivery_source
         if default_source_str:
             try:
@@ -144,25 +153,17 @@ class DeliveryWorker(SubscriberWorker):
     async def handle_event(self, event: OutboundEvent) -> None:
         """Handle an outbound message event."""
         try:
-            if not event.content or not event.content.strip():
-                self.logger.warning(
-                    f"Empty content for session {event.session_id}, skipping delivery and acking"
-                )
-                self.context.eventbus.ack(event)
-                return
-
             session_info = self._get_session_source(event.session_id)
 
             if not session_info or not session_info.source:
                 self.logger.warning(
                     f"No source for session {event.session_id}, skipping delivery"
                 )
-                self.context.eventbus.ack(event)
                 return
 
             source = self._get_delivery_source(session_info)
             if not source or not source.platform_name:
-                self.context.eventbus.ack(event)
+                # No valid delivery source - don't ack, let event be retried
                 return
 
             limit = PLATFORM_LIMITS.get(source.platform_name, float("inf"))

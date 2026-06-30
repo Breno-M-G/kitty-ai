@@ -1,4 +1,4 @@
-﻿"""Event types and data classes for the event bus."""
+"""Event types and data classes for the event bus."""
 
 import time
 from abc import ABC, abstractmethod
@@ -176,4 +176,3 @@ def deserialize_event(data: dict[str, Any]) -> Event:
         raise ValueError(f"Unknown event type: {event_type}")
 
     return event_class.from_dict(data)
-
