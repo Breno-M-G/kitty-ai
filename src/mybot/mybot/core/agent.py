@@ -16,6 +16,7 @@ from mybot.tools.skill_tool import create_skill_tool
 from mybot.tools.websearch_tool import create_websearch_tool
 from mybot.tools.webread_tool import create_webread_tool
 from mybot.tools.post_message_tool import create_post_message_tool
+from mybot.tools.subagent_tool import create_subagent_dispatch_tool
 
 from litellm.types.completion import (
     ChatCompletionMessageParam as Message,
@@ -58,10 +59,13 @@ class Agent:
             if post_tool:
                 registry.register(post_tool)
 
+        subagent_tool = create_subagent_dispatch_tool(self.agent_def.id, self.context)
+        if subagent_tool:
+            registry.register(subagent_tool)
+
         return registry
 
     def _get_token_threshold(self) -> int:
-        """Get token threshold based on model's context window."""
         return 160000
 
     def new_session(
@@ -103,16 +107,14 @@ class Agent:
     def resume_session(self, session_id: str) -> "AgentSession":
         """Load an existing conversation session."""
         session_query = [
-            session
-            for session in self.context.history_store.list_sessions()
-            if session.id == session_id
+            s for s in self.context.history_store.list_sessions()
+            if s.id == session_id
         ]
         if not session_query:
             raise ValueError(f"Session not found: {session_id}")
 
         session_info = session_query[0]
         source = session_info.get_source()
-
         history_messages = self.context.history_store.get_messages(session_id)
         messages: list[Message] = [msg.to_message() for msg in history_messages]
 
@@ -182,10 +184,7 @@ class AgentSession:
                 }
                 for tc in tool_calls
             ]
-            assistant_msg: Message = {
-                "role": "assistant",
-                "content": content,
-            }
+            assistant_msg: Message = {"role": "assistant", "content": content}
             if tool_call_dicts:
                 assistant_msg["tool_calls"] = tool_call_dicts
 
