@@ -1,4 +1,4 @@
-﻿"""Tavily web search provider."""
+"""Tavily web search provider."""
 import httpx
 from typing import TYPE_CHECKING
 from .base import WebSearchProvider, SearchResult

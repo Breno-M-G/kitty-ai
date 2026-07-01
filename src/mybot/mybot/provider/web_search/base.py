@@ -1,4 +1,4 @@
-﻿"""Base class for web search providers."""
+"""Base class for web search providers."""
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING

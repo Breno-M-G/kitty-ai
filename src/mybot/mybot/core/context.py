@@ -1,11 +1,10 @@
-﻿"""Global shared application state."""
-
 from typing import Any, TYPE_CHECKING
 
 from mybot.core.agent_loader import AgentLoader
 from mybot.core.commands.registry import CommandRegistry
 from mybot.core.cron_loader import CronLoader
 from mybot.core.history import HistoryStore
+from mybot.core.prompt_builder import PromptBuilder
 from mybot.core.routing import RoutingTable
 from mybot.core.skill_loader import SkillLoader
 from mybot.core.eventbus import EventBus
@@ -23,9 +22,10 @@ class SharedContext:
     history_store: HistoryStore
     agent_loader: AgentLoader
     skill_loader: SkillLoader
+    cron_loader: CronLoader
     command_registry: CommandRegistry
     routing_table: RoutingTable
-    cron_loader: CronLoader
+    prompt_builder: PromptBuilder
     channels: list[Channel[Any]]
     eventbus: EventBus
     websocket_worker: "WebSocketWorker | None"
@@ -37,9 +37,10 @@ class SharedContext:
         self.history_store = HistoryStore.from_config(config)
         self.agent_loader = AgentLoader.from_config(config)
         self.skill_loader = SkillLoader.from_config(config)
+        self.cron_loader = CronLoader.from_config(config)
         self.command_registry = CommandRegistry.with_builtins()
         self.routing_table = RoutingTable(self)
-        self.cron_loader = CronLoader.from_config(config)
+        self.prompt_builder = PromptBuilder(self)
 
         if channels is not None:
             self.channels = channels

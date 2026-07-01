@@ -1,4 +1,4 @@
-﻿"""Cron worker for scheduled job dispatch."""
+"""Cron worker for scheduled job dispatch."""
 
 import asyncio
 import logging

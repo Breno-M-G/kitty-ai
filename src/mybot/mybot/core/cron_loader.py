@@ -1,4 +1,4 @@
-﻿"""Cron job definition loader."""
+"""Cron job definition loader."""
 
 import logging
 from datetime import datetime
@@ -38,7 +38,9 @@ class CronDef(BaseModel):
         if not croniter.is_valid(v):
             raise ValueError(f"Invalid cron expression: {v}")
 
-        base = datetime(2024, 1, 1, 0, 0)
+        # Check minimum 5-minute granularity using croniter
+        # Get the first two run times and check the gap
+        base = datetime(2024, 1, 1, 0, 0)  # Arbitrary base time
         cron = croniter(v, base)
         first_run = cron.get_next(datetime)
         second_run = cron.get_next(datetime)
@@ -74,14 +76,14 @@ class CronLoader:
     def _parse_cron_def(
         self, def_id: str, frontmatter: dict[str, Any], body: str
     ) -> CronDef | None:
-        """Parse cron definition from frontmatter."""
+        """Parse cron definition from frontmatter (callback for discover_definitions)."""
         try:
             return CronDef(
                 id=def_id,
-                name=frontmatter["name"],
-                description=frontmatter["description"],
-                agent=frontmatter["agent"],
-                schedule=frontmatter["schedule"],
+                name=frontmatter["name"],  # type: ignore[misc]
+                description=frontmatter["description"],  # type: ignore[misc]
+                agent=frontmatter["agent"],  # type: ignore[misc]
+                schedule=frontmatter["schedule"],  # type: ignore[misc]
                 prompt=body.strip(),
                 one_off=frontmatter.get("one_off", False),
             )

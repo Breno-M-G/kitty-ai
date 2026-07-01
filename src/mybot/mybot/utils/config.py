@@ -1,4 +1,4 @@
-﻿"""Configuration management with hot reload support."""
+"""Configuration management with hot reload support."""
 
 import logging
 from pathlib import Path
@@ -81,20 +81,16 @@ class Config(BaseModel):
     websearch: Union[BraveWebSearchConfig, TavilyWebSearchConfig, None] = None
     webread: Crawl4AIWebReadConfig | None = None
     channels: ChannelConfig = Field(default_factory=ChannelConfig)
-    sources: dict[str, SourceSessionConfig] = Field(default_factory=dict)
-    default_delivery_source: str | None = None
     api: ApiConfig = Field(default_factory=ApiConfig)
+    sources: dict[str, SourceSessionConfig] = Field(default_factory=dict)
     routing: dict = Field(default_factory=lambda: {"bindings": []})
+    default_delivery_source: str | None = None
 
     @model_validator(mode="after")
     def resolve_paths(self) -> "Config":
         for field_name in (
-            "agents_path",
-            "skills_path",
-            "crons_path",
-            "logging_path",
-            "history_path",
-            "event_path",
+            "agents_path", "skills_path", "crons_path",
+            "logging_path", "history_path", "event_path",
         ):
             path = getattr(self, field_name)
             if not path.is_absolute():

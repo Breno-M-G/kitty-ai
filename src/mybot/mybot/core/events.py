@@ -1,4 +1,4 @@
-﻿"""Event types and data classes for the event bus."""
+"""Event types and data classes for the event bus."""
 
 import time
 from abc import ABC, abstractmethod
@@ -91,16 +91,19 @@ class WebSocketEventSource(EventSource):
 
     @classmethod
     def from_string(cls, s: str) -> "WebSocketEventSource":
+        """Parse source string into WebSocketEventSource."""
         parts = s.split(":", 1)
         if len(parts) != 2 or parts[0] != cls._namespace or not parts[1]:
             raise ValueError(f"Invalid WebSocketEventSource: {s}")
         return cls(user_id=parts[1])
 
     def __str__(self) -> str:
+        """Convert to source string format."""
         return f"{self._namespace}:{self.user_id}"
 
     @property
     def is_platform(self) -> bool:
+        """WebSocket sources are platform sources."""
         return True
 
 
@@ -125,7 +128,7 @@ class Event:
     """Base class for all typed events."""
 
     session_id: str
-    source: EventSource
+    source: EventSource  # Changed from str to typed EventSource
     content: str
     timestamp: float = field(default_factory=time.time)
 
@@ -183,6 +186,7 @@ class DispatchResultEvent(Event):
     error: str | None = None
 
 
+# Registry mapping event class names to event classes
 _EVENT_CLASSES: dict[str, type[Event]] = {
     "InboundEvent": InboundEvent,
     "OutboundEvent": OutboundEvent,

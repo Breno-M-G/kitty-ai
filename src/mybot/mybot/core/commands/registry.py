@@ -1,4 +1,4 @@
-﻿"""Command registry for managing slash commands."""
+"""Command registry for managing slash commands."""
 
 from typing import TYPE_CHECKING
 
@@ -9,15 +9,19 @@ if TYPE_CHECKING:
 
 
 class CommandRegistry:
+    """Registry for slash commands."""
+
     def __init__(self) -> None:
         self._commands: dict[str, Command] = {}
 
     def register(self, cmd: Command) -> None:
+        """Register a command and its aliases."""
         self._commands[cmd.name] = cmd
         for alias in cmd.aliases:
             self._commands[alias] = cmd
 
     def list_commands(self) -> list[Command]:
+        """Return list of unique commands (deduplicated by name)."""
         seen = set()
         commands = []
         for cmd in self._commands.values():
@@ -27,6 +31,7 @@ class CommandRegistry:
         return commands
 
     def resolve(self, input: str) -> tuple[Command, str] | None:
+        """Parse input and return (command, args) if it matches."""
         if not input.startswith("/"):
             return None
 
@@ -43,6 +48,7 @@ class CommandRegistry:
         return None
 
     async def dispatch(self, input: str, session: "AgentSession") -> str | None:
+        """Parse and execute a slash command."""
         resolved = self.resolve(input)
         if not resolved:
             return None
@@ -52,28 +58,29 @@ class CommandRegistry:
 
     @classmethod
     def with_builtins(cls) -> "CommandRegistry":
+        """Create registry with built-in commands registered."""
         from mybot.core.commands.handlers import (
             HelpCommand,
+            AgentCommand,
             SkillsCommand,
+            CronsCommand,
             CompactCommand,
             ContextCommand,
             ClearCommand,
             SessionCommand,
-            AgentCommand,
             RouteCommand,
             BindingsCommand,
-            CronsCommand,
         )
 
         registry = cls()
         registry.register(HelpCommand())
+        registry.register(AgentCommand())
         registry.register(SkillsCommand())
+        registry.register(CronsCommand())
         registry.register(CompactCommand())
         registry.register(ContextCommand())
         registry.register(ClearCommand())
         registry.register(SessionCommand())
-        registry.register(AgentCommand())
         registry.register(RouteCommand())
         registry.register(BindingsCommand())
-        registry.register(CronsCommand())
         return registry
