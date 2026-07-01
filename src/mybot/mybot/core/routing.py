@@ -1,4 +1,4 @@
-﻿"""Routing table for multi-agent routing."""
+# src/mybot/core/routing.py
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ class Binding:
 class RoutingTable:
     """Routes sources to agents using regex bindings."""
 
-    context: "SharedContext"
+    context: SharedContext
     bindings: list[Binding] | None = field(default=None, init=False)
     _config_hash: int | None = field(default=None, init=False)
 
@@ -53,6 +53,7 @@ class RoutingTable:
         if self.bindings is not None and self._config_hash == current_hash:
             return self.bindings
 
+        # Rebuild
         bindings_with_order = [
             (Binding(agent=b["agent"], value=b["value"]), i)
             for i, b in enumerate(bindings_data)
@@ -83,6 +84,7 @@ class RoutingTable:
         agent = Agent(agent_def, self.context)
         session = agent.new_session(source)
 
+        # Cache the session
         self.context.config.set_runtime(
             f"sources.{source_str}", SourceSessionConfig(session_id=session.session_id)
         )

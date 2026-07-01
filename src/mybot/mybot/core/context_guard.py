@@ -1,4 +1,4 @@
-﻿"""Context guard for proactive context window management."""
+"""Context guard for proactive context window management."""
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from mybot.core.session_state import SessionState
 
 
+# Default max size for tool result content before truncation
 MAX_TOOL_RESULT_CHARS = 10000
 
 COMPACT_PROMPT = """Your task is to create a detailed summary of the conversation so far, capturing the user's requests, your actions, and any important context needed to continue without losing information.
@@ -45,7 +46,7 @@ class ContextGuard:
     """Manages context window size with proactive compaction."""
 
     shared_context: "SharedContext"
-    token_threshold: int = 160000
+    token_threshold: int = 160000  # 80% of 200k context
     max_tool_result_chars: int = MAX_TOOL_RESULT_CHARS
 
     def estimate_tokens(self, state: "SessionState") -> int:
@@ -110,6 +111,7 @@ class ContextGuard:
         for msg in messages:
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
+            # Handle tool calls in assistant messages
             if role == "assistant" and msg.get("tool_calls"):
                 tool_names = [
                     tc.get("function", {}).get("name", "unknown")
@@ -133,7 +135,7 @@ class ContextGuard:
         self.shared_context.routing_table.config_source_session_cache(
             str(state.source), new_session.session_id
         )
-
+        
         compacted_history = await self._build_compacted_messages(state)
         for message in compacted_history:
             new_session.state.add_message(message)
@@ -154,7 +156,7 @@ class ContextGuard:
 
         response, _ = await state.agent.llm.chat(
             [{"role": "user", "content": summary_prompt}],
-            [],
+            [],  # No tools needed
         )
 
         messages: list[Message] = []

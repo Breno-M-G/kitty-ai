@@ -1,4 +1,4 @@
-"""Event types and data classes for the event bus."""
+﻿"""Event types and data classes for the event bus."""
 
 import time
 from abc import ABC, abstractmethod
@@ -91,20 +91,33 @@ class WebSocketEventSource(EventSource):
 
     @classmethod
     def from_string(cls, s: str) -> "WebSocketEventSource":
-        """Parse source string into WebSocketEventSource."""
         parts = s.split(":", 1)
         if len(parts) != 2 or parts[0] != cls._namespace or not parts[1]:
             raise ValueError(f"Invalid WebSocketEventSource: {s}")
         return cls(user_id=parts[1])
 
     def __str__(self) -> str:
-        """Convert to source string format."""
         return f"{self._namespace}:{self.user_id}"
 
     @property
     def is_platform(self) -> bool:
-        """WebSocket sources are platform sources."""
         return True
+
+
+@dataclass
+class CronEventSource(EventSource):
+    """Source for cron-triggered events."""
+
+    _namespace = "cron"
+    cron_id: str
+
+    def __str__(self) -> str:
+        return f"cron:{self.cron_id}"
+
+    @classmethod
+    def from_string(cls, s: str) -> "CronEventSource":
+        _, cron_id = s.split(":", 1)
+        return cls(cron_id=cron_id)
 
 
 @dataclass
@@ -112,7 +125,7 @@ class Event:
     """Base class for all typed events."""
 
     session_id: str
-    source: EventSource  # Changed from str to typed EventSource
+    source: EventSource
     content: str
     timestamp: float = field(default_factory=time.time)
 
@@ -155,10 +168,26 @@ class OutboundEvent(Event):
     error: str | None = None
 
 
-# Registry mapping event class names to event classes
+@dataclass
+class DispatchEvent(Event):
+    """Event for internal agent-to-agent delegation."""
+
+    parent_session_id: str = ""
+    retry_count: int = 0
+
+
+@dataclass
+class DispatchResultEvent(Event):
+    """Event for result of a dispatched job."""
+
+    error: str | None = None
+
+
 _EVENT_CLASSES: dict[str, type[Event]] = {
     "InboundEvent": InboundEvent,
     "OutboundEvent": OutboundEvent,
+    "DispatchEvent": DispatchEvent,
+    "DispatchResultEvent": DispatchResultEvent,
 }
 
 

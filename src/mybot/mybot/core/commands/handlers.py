@@ -11,14 +11,11 @@ if TYPE_CHECKING:
 
 
 class SessionCommand(Command):
-    """Show current session details."""
-
     name = "session"
     description = "Show current session details"
 
     async def execute(self, args: str, session: "AgentSession") -> str:
         info = session.shared_context.history_store.get_session_info(session.session_id)
-
         created_str = info.created_at if info else "Unknown"
 
         lines = [
@@ -32,8 +29,6 @@ class SessionCommand(Command):
 
 
 class HelpCommand(Command):
-    """Show available commands."""
-
     name = "help"
     aliases = ["?"]
     description = "Show available commands"
@@ -47,8 +42,6 @@ class HelpCommand(Command):
 
 
 class CompactCommand(Command):
-    """Trigger manual context compaction."""
-
     name = "compact"
     description = "Compact conversation context manually"
 
@@ -59,8 +52,6 @@ class CompactCommand(Command):
 
 
 class ContextCommand(Command):
-    """Show session context information."""
-
     name = "context"
     description = "Show session context information"
 
@@ -77,8 +68,6 @@ class ContextCommand(Command):
 
 
 class ClearCommand(Command):
-    """Clear conversation and start fresh."""
-
     name = "clear"
     description = "Clear conversation and start fresh"
 
@@ -89,8 +78,6 @@ class ClearCommand(Command):
 
 
 class SkillsCommand(Command):
-    """List all skills or show skill details."""
-
     name = "skills"
     description = "List all skills or show skill details"
 
@@ -121,8 +108,6 @@ class SkillsCommand(Command):
 
 
 class AgentCommand(Command):
-    """List agents or show agent details."""
-
     name = "agent"
     aliases = ["agents"]
     description = "List agents or show agent details"
@@ -147,23 +132,19 @@ class AgentCommand(Command):
             f"**Name:** {agent_def.name}",
             f"**Description:** {agent_def.description}",
             f"**LLM:** {agent_def.llm.model}",
+            f"\n---\n\n**AGENT.md:**\n```\n{agent_def.agent_md}\n```",
         ]
-
-        lines.append(f"\n---\n\n**AGENT.md:**\n```\n{agent_def.agent_md}\n```")
-
         return "\n".join(lines)
 
 
 class RouteCommand(Command):
-    """Create a routing binding."""
-
     name = "route"
     description = "Create a routing binding (persists to config)"
 
     async def execute(self, args: str, session: "AgentSession") -> str:
         parts = args.strip().split(None, 1)
         if len(parts) != 2:
-            return "**Usage:** `/route <source_pattern> <agent_id>`\n\nExample: `/route platform-telegram:.* pickle`"
+            return "**Usage:** `/route <source_pattern> <agent_id>`"
 
         pattern, agent_id = parts
 
@@ -178,13 +159,10 @@ class RouteCommand(Command):
             return f"Agent `{agent_id}` not found."
 
         session.shared_context.routing_table.persist_binding(pattern, agent_id)
-
         return f"Route bound: `{pattern}` -> `{agent_id}`"
 
 
 class BindingsCommand(Command):
-    """Show all routing bindings."""
-
     name = "bindings"
     description = "Show all routing bindings"
 
@@ -198,4 +176,35 @@ class BindingsCommand(Command):
         for binding in bindings:
             lines.append(f"- `{binding['value']}` -> `{binding['agent']}`")
 
+        return "\n".join(lines)
+
+
+class CronsCommand(Command):
+    name = "crons"
+    description = "List all cron jobs or show cron details"
+
+    async def execute(self, args: str, session: "AgentSession") -> str:
+        if not args:
+            crons = session.shared_context.cron_loader.discover_crons()
+            if not crons:
+                return "No cron jobs configured."
+
+            lines = ["**Cron Jobs:**"]
+            for cron in crons:
+                lines.append(f"- `{cron.id}`: {cron.schedule}")
+            return "\n".join(lines)
+
+        cron_id = args.strip()
+        try:
+            cron = session.shared_context.cron_loader.load(cron_id)
+        except DefNotFoundError:
+            return f"Cron `{cron_id}` not found."
+
+        lines = [
+            f"**Cron:** `{cron.id}`",
+            f"**Name:** {cron.name}",
+            f"**Schedule:** `{cron.schedule}`",
+            f"**Agent:** {cron.agent}",
+            f"\n---\n\n**CRON.md:**\n```\n{cron.prompt}\n```",
+        ]
         return "\n".join(lines)

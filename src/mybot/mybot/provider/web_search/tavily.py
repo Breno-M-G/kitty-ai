@@ -8,8 +8,6 @@ if TYPE_CHECKING:
 
 
 class TavilySearchProvider(WebSearchProvider):
-    """Web search provider using Tavily API."""
-
     def __init__(self, config: "Config") -> None:
         self.api_key = config.websearch.api_key
 

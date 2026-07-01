@@ -1,4 +1,4 @@
-﻿"""Channel worker for ingesting platform messages."""
+"""Channel worker for ingesting platform messages."""
 
 import asyncio
 import time
@@ -47,6 +47,7 @@ class ChannelWorker(Worker):
                     )
                     return
 
+                # Set default delivery source only on first non-CLI platform message
                 if source.is_platform and source.platform_name != "cli":
                     if not self.context.config.default_delivery_source:
                         source_str_value = str(source)
@@ -56,6 +57,7 @@ class ChannelWorker(Worker):
 
                 session_id = self.context.routing_table.get_or_create_session_id(source)
 
+                # Publish INBOUND event with typed source
                 event = InboundEvent(
                     session_id=session_id,
                     source=source,

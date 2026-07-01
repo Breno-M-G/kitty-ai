@@ -10,37 +10,27 @@ if TYPE_CHECKING:
 
 
 class SearchResult(BaseModel):
-    """Normalized search result from any provider."""
-
     title: str
     url: str
     snippet: str
 
 
 class WebSearchProvider(ABC):
-    """Abstract base class for web search providers."""
-
     @abstractmethod
     async def search(self, query: str) -> list[SearchResult]:
-        """Search the web and return normalized results."""
         pass
 
     @staticmethod
     def from_config(config: "Config") -> "WebSearchProvider":
-        """Factory method to create provider from config."""
         if config.websearch is None:
             raise ValueError("Websearch not configured")
 
         match config.websearch.provider:
             case "brave":
                 from .brave import BraveSearchProvider
-
                 return BraveSearchProvider(config)
             case "tavily":
                 from .tavily import TavilySearchProvider
-
                 return TavilySearchProvider(config)
             case _:
-                raise ValueError(
-                    f"Unknown websearch provider: {config.websearch.provider}"
-                )
+                raise ValueError(f"Unknown websearch provider: {config.websearch.provider}")

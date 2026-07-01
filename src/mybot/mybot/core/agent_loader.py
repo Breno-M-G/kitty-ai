@@ -1,4 +1,4 @@
-﻿"""Agent definition loader."""
+"""Agent definition loader."""
 
 from typing import Any
 
@@ -8,8 +8,8 @@ from mybot.utils.config import Config, LLMConfig
 from mybot.utils.def_loader import (
     DefNotFoundError,
     InvalidDefError,
-    parse_definition,
     discover_definitions,
+    parse_definition,
 )
 
 

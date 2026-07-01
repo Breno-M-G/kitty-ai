@@ -10,7 +10,14 @@ from fastapi.websockets import WebSocketDisconnect
 from pydantic import ValidationError, BaseModel, Field
 
 from .worker import SubscriberWorker
-from mybot.core.events import Event, InboundEvent, OutboundEvent, WebSocketEventSource
+from mybot.core.events import (
+    Event,
+    InboundEvent,
+    OutboundEvent,
+    DispatchEvent,
+    DispatchResultEvent,
+    WebSocketEventSource,
+)
 
 if TYPE_CHECKING:
     from mybot.core.context import SharedContext
@@ -19,51 +26,36 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketMessage(BaseModel):
-    """Incoming WebSocket message from client."""
-
-    source: str = Field(..., min_length=1, description="Client identifier")
-    content: str = Field(..., min_length=1, description="Message content")
-    agent_id: str | None = Field(
-        None, description="Target agent ID (optional - uses routing if not specified)"
-    )
+    source: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
+    agent_id: str | None = Field(None)
 
 
 class WebSocketWorker(SubscriberWorker):
-    """Manages WebSocket connections and event broadcasting."""
-
     def __init__(self, context: "SharedContext"):
         super().__init__(context)
         self.clients: Set[WebSocket] = set()
 
-        for event_class in [InboundEvent, OutboundEvent]:
+        for event_class in [InboundEvent, OutboundEvent, DispatchEvent, DispatchResultEvent]:
             self.context.eventbus.subscribe(event_class, self.handle_event)
         self.logger.info("WebSocketWorker subscribed to event types")
 
     async def handle_connection(self, ws: WebSocket) -> None:
-        """Handle a single WebSocket connection lifecycle."""
         self.clients.add(ws)
-        self.logger.info(
-            f"WebSocket client connected. Total clients: {len(self.clients)}"
-        )
+        self.logger.info(f"WebSocket client connected. Total clients: {len(self.clients)}")
 
         try:
             await self._run_client_loop(ws)
         finally:
             self.clients.discard(ws)
-            self.logger.info(
-                f"WebSocket client disconnected. Total clients: {len(self.clients)}"
-            )
+            self.logger.info(f"WebSocket client disconnected. Total clients: {len(self.clients)}")
 
     async def _run_client_loop(self, ws: WebSocket) -> None:
-        """Run message receiving loop for a single client."""
-
         while True:
             try:
                 data = await ws.receive_json()
                 msg = WebSocketMessage(**data)
-
                 event = self._normalize_message(msg)
-
                 await self.context.eventbus.publish(event)
                 self.logger.debug(f"Emitted InboundEvent from WebSocket: {msg.source}")
 
@@ -71,16 +63,13 @@ class WebSocketWorker(SubscriberWorker):
                 self.logger.info("Client disconnected normally")
                 break
             except ValidationError as e:
-                await ws.send_json(
-                    {"type": "error", "message": f"Validation error: {e}"}
-                )
+                await ws.send_json({"type": "error", "message": f"Validation error: {e}"})
                 self.logger.warning(f"Validation error from client: {e}")
             except Exception as e:
                 self.logger.error(f"Unexpected error in client loop: {e}")
                 break
 
     def _normalize_message(self, msg: "WebSocketMessage") -> InboundEvent:
-        """Normalize WebSocketMessage to InboundEvent."""
         source = WebSocketEventSource(user_id=msg.source)
 
         agent_id = msg.agent_id
@@ -97,21 +86,14 @@ class WebSocketWorker(SubscriberWorker):
         )
 
     async def handle_event(self, event: Event) -> None:
-        """Handle EventBus event by broadcasting to WebSocket clients."""
         if not self.clients:
             return
 
-        event_dict = {
-            "type": event.__class__.__name__,
-        }
+        event_dict = {"type": event.__class__.__name__}
         event_dict.update(dataclasses.asdict(event))
 
         if "source" in event_dict and hasattr(event.source, "__str__"):
             event_dict["source"] = str(event.source)
-
-        self.logger.debug(
-            f"Broadcasting {event.__class__.__name__} to {len(self.clients)} clients"
-        )
 
         for client in list(self.clients):
             try:
